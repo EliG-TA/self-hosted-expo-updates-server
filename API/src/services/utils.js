@@ -35,8 +35,8 @@ class Service {
     const upload = await this.app.service('uploads').get(uploadId)
     if (!upload) throw new Err.NotFound('Upload not found')
 
-    fs.rmSync(upload.path, { recursive: true, force: true })
-    fs.rmSync(upload.filename, { force: true })
+    if(upload.path) fs.rmSync(upload.path, { recursive: true, force: true })
+    if(upload.filename) fs.rmSync(upload.filename, { force: true })
 
     await this.app.service('uploads').remove(upload._id)
 
