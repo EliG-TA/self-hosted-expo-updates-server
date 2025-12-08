@@ -64,7 +64,6 @@ module.exports.getMetadataSync = (update) => {
     return {
       metadataJson,
       createdAt: new Date(update.releasedAt).toISOString(),
-      id: createHash(updateMetadataBuffer, 'sha256', 'hex')
     }
   } catch (error) {
     throw new Error(`No update found with runtime version: ${update.version}. Error: ${error}`)
@@ -77,9 +76,18 @@ const convertSHA256HashToUUID = (value) => {
 
 module.exports.convertSHA256HashToUUID = convertSHA256HashToUUID
 
-module.exports.getUpdateId = (pathToUpdate) => {
+const getUpdateHash = (pathToUpdate) => {
   const metadataPath = `${pathToUpdate}/metadata.json`
   const updateMetadataBuffer = fs.readFileSync(path.resolve(metadataPath), null)
-  const id = createHash(updateMetadataBuffer, 'sha256', 'hex')
+  return createHash(updateMetadataBuffer, 'sha256', 'hex')
+}
+
+module.exports.getUpdateHash = getUpdateHash
+
+const getUpdateId = (pathToUpdate, updateHash) => {
+  const combined = pathToUpdate + updateHash
+  const id = createHash(combined, 'sha256', 'hex')
   return convertSHA256HashToUUID(id)
 }
+
+module.exports.getUpdateId = getUpdateId

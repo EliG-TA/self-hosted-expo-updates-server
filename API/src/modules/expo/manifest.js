@@ -2,7 +2,7 @@ const FormData = require('form-data')
 const { serializeDictionary } = require('structured-headers')
 const Err = require('@feathersjs/errors')
 const { getRequestParams } = require('./request')
-const { getMetadataSync, convertSHA256HashToUUID, getAssetMetadataSync, signRSASHA256, convertToDictionaryItemsRepresentation } = require('./helpers')
+const { getMetadataSync, getAssetMetadataSync, signRSASHA256, convertToDictionaryItemsRepresentation } = require('./helpers')
 
 const getSignature = async ({ headers, manifest, privateKey }) => {
   const expectSignatureHeader = !!headers['expo-expect-signature']
@@ -35,11 +35,11 @@ module.exports.hanldeManifestData = async (app, { query, headers }) => {
   if (!application) return { message: 'No application found' }
 
   try {
-    const { metadataJson, createdAt, id } = getMetadataSync(update)
+    const { metadataJson, createdAt } = getMetadataSync(update)
 
     const platformSpecificMetadata = metadataJson.fileMetadata[platform]
     const manifest = {
-      id: convertSHA256HashToUUID(id),
+      id: update.updateId,
       createdAt,
       runtimeVersion,
       assets: platformSpecificMetadata.assets.map((asset) =>

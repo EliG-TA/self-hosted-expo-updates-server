@@ -8,7 +8,7 @@ const Err = require('@feathersjs/errors')
 const fs = require('fs')
 const unzipper = require('unzipper')
 const { getJSONInfo } = require('../modules/expo/asset')
-const { getUpdateId } = require('../modules/expo/helpers')
+const { getUpdateId, getUpdateHash } = require('../modules/expo/helpers')
 
 const createDocument = async (context) => {
   if (!context.result.id || !context.result.size) {
@@ -44,11 +44,13 @@ const createDocument = async (context) => {
   let appJson = null
   let dependencies = null
   let updateId = null
+  let updateHash = null
   try {
     const info = getJSONInfo({ path })
     appJson = info.appJson
     dependencies = info.dependencies
-    updateId = getUpdateId(path)
+    updateHash = getUpdateHash(path)
+    updateId = getUpdateId(path, updateHash)
   } catch (e) {
     fs.rmSync(path, { recursive: true, force: true })
     fs.rmSync(upload.filename, { force: true })
@@ -57,12 +59,14 @@ const createDocument = async (context) => {
     throw new Err.BadRequest('No metadata.json found, was it included in the zip?')
   }
 
-  await context.app.service('uploads')._patch(upload._id, { path, appJson, dependencies, updateId })
+  await context.app.service('uploads')._patch(upload._id, { path, appJson, dependencies, updateId, updateHash })
 
   delete context.result.id
   delete context.result.contentType
   delete context.result.size
   context.result.uploadId = upload._id
+  context.result.updateId = updateId
+  context.result.updateHash = updateHash
   context.result.project = upload.project
   context.result.releaseChannel = upload.releaseChannel
   context.result.message = 'Upload successful, use the web UI to release id: ' + upload._id

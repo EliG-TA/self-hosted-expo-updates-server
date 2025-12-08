@@ -17,6 +17,7 @@ export const UpdateInfo = ({ update }) => {
   return (
     <Flex fw as>
       <Text value={`Update ID: ${update.updateId || 'Not Released'}`} />
+      <Text value={`Update Hash: ${update.updateHash}`} />
       <Text value={`Created: ${formatDate(update.createdAt)}`} />
       <Text value={`Release Channel: ${update.releaseChannel}`} />
       <Text value={`Version: ${update.version}`} />
