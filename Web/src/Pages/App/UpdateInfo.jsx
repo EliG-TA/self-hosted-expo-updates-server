@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Flex, Input, Text, Button } from '../../Components'
 import { Dialog } from 'primereact/dialog'
+import { TabView, TabPanel } from 'primereact/tabview'
 
 import moment from 'moment'
 
@@ -32,10 +33,14 @@ export const UpdateInfo = ({ update }) => {
       <Button icon='wrench' label='Dependencies & Config' onClick={() => setConfig(true)} style={{ marginTop: 10 }} />
 
       <Dialog visible={config} modal onHide={() => setConfig(false)} header={<Text value='Dependencies & app.json' bold size={28} />} style={{ width: 900 }}>
-        <Text value='Dependencies in package.json:' style={{ marginBottom: 10 }} />
-        <Input multiline value={JSON.stringify(update.dependencies, null, 4)} rows={10} />
-        <Text value='Config in app.json:' style={{ marginTop: 20, marginBottom: 10 }} />
-        <Input multiline value={JSON.stringify(update.appJson, null, 4)} rows={10} />
+        <TabView>
+          <TabPanel header="package.json">
+            <Input multiline value={JSON.stringify(update.dependencies, null, 4)} rows={10} />
+          </TabPanel>
+          <TabPanel header="app.json">
+            <Input multiline value={JSON.stringify(update.appJson, null, 4)} rows={10} />
+          </TabPanel>
+        </TabView>
       </Dialog>
     </Flex>
   )
