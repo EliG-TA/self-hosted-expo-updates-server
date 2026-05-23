@@ -1,14 +1,7 @@
 const path = require('path')
 const fs = require('fs')
-const { Service } = require('feathers-mongodb')
+const { MongoDBService } = require('@feathersjs/mongodb')
 const error = require('../hooks/error')
-
-// Custom service to allow String as _id instead of BsonID
-class ServiceNoBsonID extends Service {
-  _objectifyId (id) {
-    return id
-  }
-}
 
 // Default Middleware
 const defeultMiddleware = (req, res, next) => {
@@ -17,7 +10,7 @@ const defeultMiddleware = (req, res, next) => {
 
 const services = fs
   .readdirSync(path.join(__dirname, '/'))
-  .filter((el) => el.includes('.js') && !el.includes('.DS_Store') && el !== 'index.js')
+  .filter((el) => /\.(ts|js)$/.test(el) && !el.startsWith('index.'))
   .map((el) => require(path.join(__dirname, el)))
 
 module.exports = function (app) {
@@ -41,10 +34,11 @@ module.exports = function (app) {
       const createdService = createService(defaultOptions)
       app.use(`/${name}`, createdService, middleware || defeultMiddleware)
     } else {
-      const createdService = noBsonIDs ? new ServiceNoBsonID(defaultOptions) : new Service(defaultOptions)
+      const opts = noBsonIDs ? { ...defaultOptions, disableObjectify: true } : defaultOptions
+      const createdService = new MongoDBService(opts)
       app.use(`/${name}`, createdService)
       app.get('mongoClient').then((db) => {
-        app.service(name).Model = db.collection(name)
+        app.service(name).options.Model = db.collection(name)
       })
     }
 

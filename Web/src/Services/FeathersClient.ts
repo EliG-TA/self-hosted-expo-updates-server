@@ -1,7 +1,7 @@
-import feathers from '@feathersjs/client'
+import { feathers } from '@feathersjs/feathers'
 import socketio from '@feathersjs/socketio-client'
-import fcAuth from '@feathersjs/authentication-client'
-import io from 'socket.io-client'
+import authClient, { MemoryStorage } from '@feathersjs/authentication-client'
+import { io } from 'socket.io-client'
 import { invalidateQuery } from './QueryCache'
 
 /* ============================== Environment Setup ================================================== */
@@ -9,7 +9,7 @@ const isDev = !window?._env_?.ENVIRONMENT || window?._env_?.ENVIRONMENT === 'dev
 const serverUrl = window?._env_?.API_BASE_URL || 'http://localhost:3000'
 
 /* ============================== Socket Configuration ================================================== */
-const FC = {
+const FC: any = {
   isDev,
   socket: io(serverUrl, { transports: ['websocket'], forceNew: true }),
   client: feathers(),
@@ -22,8 +22,8 @@ const FC = {
   server: serverUrl
 }
 
-FC.client.configure(socketio(FC.socket, { timeout: 30000, pingInterval: 5000, pingTimeout: 20000 }))
-FC.client.configure(fcAuth({ storage: new fcAuth.MemoryStorage() }))
+FC.client.configure(socketio(FC.socket, { timeout: 30000 }))
+FC.client.configure(authClient({ storage: new MemoryStorage() }))
 
 FC.socket.on('connect', FC.connectionHandler('connect'))
 FC.socket.on('disconnect', FC.connectionHandler('disconnect'))
@@ -47,7 +47,7 @@ FC.logout = () => {
 }
 
 FC.services = FC.client.services
-FC.service = FC.client.service
+FC.service = FC.client.service.bind(FC.client)
 
 FC.isReady = () => FC.online && FC.authenticated
 

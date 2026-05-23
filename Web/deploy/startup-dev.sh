@@ -1,14 +1,26 @@
 #!/bin/sh
+set -e
 
-# Env Loader
 cd /app/deploy
 ./loadEnv.sh dockerEnv
 mv env-config.js /app/public/
 
-# Yarn Setup
 cd /app
-yarn config set cache-folder $YARN_CACHE_FOLDER
-(yarn check --integrity && yarn check --verify-tree) || yarn install --frozen-lockfile
+NEEDS_INSTALL=0
+if [ ! -d node_modules ] || [ ! -f node_modules/.bun-install-marker ]; then
+  NEEDS_INSTALL=1
+elif [ package.json -nt node_modules/.bun-install-marker ]; then
+  NEEDS_INSTALL=1
+fi
 
-# Startup Vite
-yarn vite --port 4000 --host
+if [ "$NEEDS_INSTALL" = "1" ]; then
+  echo "[entrypoint] running bun install..."
+  if [ -f bun.lock ] || [ -f bun.lockb ]; then
+    bun install --frozen-lockfile
+  else
+    bun install
+  fi
+  touch node_modules/.bun-install-marker
+fi
+
+exec bunx vite --port 4000 --host

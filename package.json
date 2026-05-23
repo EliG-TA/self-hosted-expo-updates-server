@@ -6,35 +6,7 @@
   "homepage": "https://github.com/umbertoghio/self-hosted-expo-updates-server",
   "license": "MIT",
   "scripts": {
-    "---Dev API & Web---": "",
     "dev:run": "cd Docker/development; docker-compose up --build",
     "dev:stop": "cd Docker/development; docker-compose down"
-  },
-  "devDependencies": {
-    "@babel/core": "~7.9.0",
-    "babel-eslint": "^10.1.0",
-    "babel-preset-expo": "^8.5.1",
-    "eslint": "^7.11.0",
-    "eslint-plugin-html": "^6.2.0",
-    "nodemon": "^2.0.14",
-    "standard": "^16.0.4",
-    "typescript": "^4.4.4"
-  },
-  "standard": {
-    "parser": "babel-eslint",
-    "version": "15.0",
-    "globals": [
-      "describe",
-      "test",
-      "jest",
-      "expect",
-      "fetch",
-      "navigator",
-      "__DEV__",
-      "__static",
-      "XMLHttpRequest",
-      "FormData",
-      "React$Element"
-    ]
   }
 }

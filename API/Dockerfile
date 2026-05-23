@@ -1,16 +1,15 @@
-FROM node:22-alpine
+FROM oven/bun:1-alpine
 RUN apk update && apk add --no-cache tzdata
-RUN mkdir -p /home/node/server && chown -R node:node /home/node/server
-WORKDIR /home/node/server
-USER node
-COPY --chown=node:node package.json yarn.lock ./
+RUN mkdir -p /home/bun/server && chown -R bun:bun /home/bun/server
+WORKDIR /home/bun/server
+USER bun
+COPY --chown=bun:bun package.json bun.lock* ./
 
-RUN yarn install
-RUN yarn cache clean
+RUN bun install --frozen-lockfile
 
-COPY --chown=node:node . .
+COPY --chown=bun:bun . .
 
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD node src/modules/docker/healthcheck.js
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD bun run src/modules/docker/healthcheck.ts
 
-CMD ["node", "src/index.js"]
+CMD ["bun", "run", "src/index.ts"]

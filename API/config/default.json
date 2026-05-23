@@ -21,7 +21,7 @@
       "expiresIn": "5y"
     },
     "local": {
-      "usernameField": "\\username",
+      "usernameField": "username",
       "passwordField": "password"
     }
   },

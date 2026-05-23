@@ -1,11 +1,12 @@
 # => Build container
-FROM node:16-alpine as builder
+FROM oven/bun:1-alpine as builder
 
 WORKDIR /app
-COPY . .
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile
 
-RUN yarn install --frozen-lockfile
-RUN yarn vite build
+COPY . .
+RUN bunx vite build
 
 # => Run container
 FROM nginxinc/nginx-unprivileged:alpine
@@ -36,4 +37,3 @@ USER 101
 
 # Start Nginx server
 CMD ["/env/startup.sh"]
-
