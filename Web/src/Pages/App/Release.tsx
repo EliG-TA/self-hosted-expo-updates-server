@@ -146,8 +146,7 @@ export const Release = ({ update, onHide }) => {
         <Text value={`You are about to delete ${update.updateId}, all related files will be permanently removed from the server.`} />
         <Text value='Are you sure?' style={{ marginTop: 20 }} />
 
-        <Flex jb row style={{ width: 300, marginTop: 20 }}>
-
+        <Flex jb row fw style={{ marginTop: 20 }}>
           <Button icon='ban' label='Cancel' onClick={() => setDeleting(false)} />
           <Button icon='check' label='DELETE' onClick={handleAction('delete')} />
         </Flex>
