@@ -244,9 +244,23 @@ export const ReleaseManager = ({ app }) => {
           <DataTable
             style={{ marginTop: 10, width: '100%' }}
             value={uploads} paginator rows={10} emptyMessage='No app versions yet'
-            selectionMode={releasing ? undefined : 'single'} selection={update} onSelectionChange={({ value }) => setUpdate(value)}
           >
-            <Column field='updateId' header='Update ID' filter sortable />
+            <Column field='updateId' header='Update ID' filter sortable
+              body={(row) => (
+                <span
+                  onClick={(e) => { e.stopPropagation(); setUpdate(row) }}
+                  title='Open update details'
+                  style={{
+                    fontFamily: 'ui-monospace, Menlo, monospace',
+                    fontSize: 12,
+                    wordBreak: 'break-all',
+                    cursor: 'pointer',
+                    color: Colors.primary,
+                    textDecoration: 'underline dotted'
+                  }}
+                >{row.updateId || '—'}</span>
+              )}
+            />
             <Column field='createdAt' header='Created' sortable body={({ createdAt }) => moment(createdAt).format('YYYY-MM-DD HH:mm:ss')} />
             <Column field='releaseChannel' header='Channel' filter sortable />
             <Column field='version' header='Version' filter sortable />
