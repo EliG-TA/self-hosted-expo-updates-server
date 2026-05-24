@@ -37,3 +37,9 @@
   background: transparent;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+/* Subtle "fetching in background" indicator for app headers */
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
