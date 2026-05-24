@@ -1,6 +1,10 @@
-import { Text, Card, Spinner } from '../../Components'
+import { useState } from 'react'
+import { Text, Card, Spinner, Colors } from '../../Components'
+import { DataTable } from 'primereact/datatable'
+import { Column } from 'primereact/column'
 import { useCQuery, useCollapsedState } from '../../Services'
-import { UpdateInfo } from './UpdateInfo'
+import { Release } from './Release'
+import moment from 'moment'
 import _ from 'lodash'
 
 const compareVersions = (a, b) => {
@@ -15,27 +19,21 @@ const compareVersions = (a, b) => {
   return 0
 }
 
-// Each card-with-hook needs its own component, otherwise the hook would be
-// called inside .map(), violating the Rules of Hooks.
-const UpdateCard = ({ project, update, defaultCollapsed }) => {
-  const [collapsed, setCollapsed] = useCollapsedState(
-    `published:${project}:update:${update._id}`,
-    defaultCollapsed
-  )
-  return (
-    <Card
-      collapsable
-      collapsed={collapsed}
-      onToggle={setCollapsed}
-      title={`${update.releaseChannel} - ${update.gitCommit}`}
-      style={{ marginTop: 10 }}
-    >
-      <UpdateInfo update={update} />
-    </Card>
-  )
+const formatDate = (d) => d ? moment(d).format('YYYY-MM-DD HH:mm:ss') : '—'
+
+// gitCommit field is populated by the upload script as `git log --oneline -n 1`,
+// so it's '<shortSha> <subject>' rather than a bare hash. Split the two so the
+// hash gets monospace styling and the subject is plain readable prose.
+const splitCommit = (raw) => {
+  if (!raw) return { hash: null, subject: null }
+  const idx = raw.indexOf(' ')
+  if (idx === -1) return { hash: raw, subject: null }
+  return { hash: raw.slice(0, idx), subject: raw.slice(idx + 1) }
 }
 
-const VersionCard = ({ project, version, updates, defaultCollapsed }) => {
+// Per-version table — hooks for persisted collapsed state must live in their
+// own component so they're not called inside .map().
+const VersionTable = ({ project, version, updates, defaultCollapsed, onOpen }) => {
   const [collapsed, setCollapsed] = useCollapsedState(
     `published:${project}:version:${version}`,
     defaultCollapsed
@@ -45,17 +43,65 @@ const VersionCard = ({ project, version, updates, defaultCollapsed }) => {
       collapsable
       collapsed={collapsed}
       onToggle={setCollapsed}
-      title={`Version ${version}`}
+      title={`Runtime ${version}  ·  ${updates.length} release${updates.length === 1 ? '' : 's'}`}
       style={{ marginTop: 20 }}
     >
-      {updates.map((update, ind) => (
-        <UpdateCard
-          key={update._id}
-          project={project}
-          update={update}
-          defaultCollapsed={!!ind}
+      <DataTable
+        value={updates}
+        size='small'
+        paginator={updates.length > 10}
+        rows={10}
+        sortField='releasedAt'
+        sortOrder={-1}
+        style={{ width: '100%', marginTop: 10 }}
+      >
+        <Column field='updateId' header='Update ID' sortable filter
+          body={(row) => (
+            <span
+              onClick={(e) => { e.stopPropagation(); onOpen(row) }}
+              title='Open update details'
+              style={{
+                fontFamily: 'ui-monospace, Menlo, monospace',
+                fontSize: 12,
+                wordBreak: 'break-all',
+                cursor: 'pointer',
+                color: Colors.primary,
+                textDecoration: 'underline dotted'
+              }}
+            >{row.updateId || '—'}</span>
+          )}
         />
-      ))}
+        <Column field='releaseChannel' header='Channel' sortable filter style={{ width: 130 }} />
+        <Column field='gitCommit' header='Commit' sortable filter
+          body={(row) => {
+            const { hash, subject } = splitCommit(row.gitCommit)
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{
+                  fontFamily: 'ui-monospace, Menlo, monospace',
+                  fontSize: 12,
+                  color: 'rgba(255,255,255,0.7)'
+                }}>{hash || '—'}</span>
+                {subject && (
+                  <span style={{ fontSize: 12 }} title={subject}>{subject}</span>
+                )}
+                {row.gitBranch && (
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+                    {row.gitBranch}
+                  </span>
+                )}
+              </div>
+            )
+          }}
+        />
+        <Column field='releasedAt' header='Published' sortable style={{ width: 180 }}
+          body={({ releasedAt }) => (
+            <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+              {formatDate(releasedAt)}
+            </span>
+          )}
+        />
+      </DataTable>
     </Card>
   )
 }
@@ -66,19 +112,12 @@ export const PublishedUpdates = ({ app }) => {
     `published:${app._id}:root`,
     false
   )
+  const [openedUpdate, setOpenedUpdate] = useState(null)
 
   if (!isSuccess) return <Spinner />
 
-  // Group by version
   const grouped = _.groupBy(published, 'version')
-
-  // Sort versions descending
   const sortedVersions = Object.keys(grouped).sort((a, b) => compareVersions(b, a))
-
-  // Sort updates within each group by releasedAt descending
-  sortedVersions.forEach(version => {
-    grouped[version] = _.sortBy(grouped[version], u => -new Date(u.releasedAt))
-  })
 
   return (
     <Card
@@ -91,14 +130,17 @@ export const PublishedUpdates = ({ app }) => {
     >
       {!published.length && <Text value='No published updates yet, upload and release one to see it here' />}
       {sortedVersions.map((version, versionInd) => (
-        <VersionCard
+        <VersionTable
           key={version}
           project={app._id}
           version={version}
           updates={grouped[version]}
           defaultCollapsed={!!versionInd}
+          onOpen={setOpenedUpdate}
         />
       ))}
+
+      <Release update={openedUpdate} onHide={() => setOpenedUpdate(null)} />
     </Card>
   )
 }
