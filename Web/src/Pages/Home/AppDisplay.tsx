@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Flex, Card, Spinner, Button, Text, Colors } from '../../Components'
+import { Flex, Card, Spinner, Button, Text, Colors, StatusPill } from '../../Components'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { useCQuery, useCollapsedState } from '../../Services'
@@ -18,31 +18,6 @@ const compareVersionsDesc = (a, b) => {
     if (pa < pb) return 1
   }
   return 0
-}
-
-// Upload status → small pill. 'ready' (uploaded but never released) is
-// surfaced as 'new' since that's the user-facing concept on this screen.
-const STATUS_PILL = {
-  released: { label: 'released', bg: 'rgba(76, 175, 80, 0.22)', fg: '#7fdc96' },
-  obsolete: { label: 'obsolete', bg: 'rgba(255, 255, 255, 0.08)', fg: 'rgba(255,255,255,0.6)' },
-  ready: { label: 'new', bg: 'rgba(66, 165, 245, 0.22)', fg: '#7fb3ff' }
-}
-
-const StatusPill = ({ status }) => {
-  const cfg = STATUS_PILL[status]
-  if (!cfg) return null
-  return (
-    <span style={{
-      padding: '1px 6px',
-      borderRadius: 3,
-      fontSize: 10,
-      fontWeight: 600,
-      backgroundColor: cfg.bg,
-      color: cfg.fg,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5
-    }}>{cfg.label}</span>
-  )
 }
 
 const embeddedLine = (row) => {

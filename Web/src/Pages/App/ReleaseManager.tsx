@@ -5,7 +5,7 @@ import { TabView, TabPanel } from 'primereact/tabview'
 import moment from 'moment'
 
 import { FC, useCQuery, invalidateQuery } from '../../Services'
-import { Button, Card, Flex, Spinner, Text, Colors } from '../../Components'
+import { Button, Card, Flex, Spinner, Text, Colors, StatusPill } from '../../Components'
 import { Release } from './Release'
 import { UpdateInstructions } from './UpdateInstructions'
 
@@ -264,7 +264,9 @@ export const ReleaseManager = ({ app }) => {
             <Column field='createdAt' header='Created' sortable body={({ createdAt }) => moment(createdAt).format('YYYY-MM-DD HH:mm:ss')} />
             <Column field='releaseChannel' header='Channel' filter sortable />
             <Column field='version' header='Version' filter sortable />
-            <Column field='status' header='Status' filter sortable />
+            <Column field='status' header='Status' filter sortable
+              body={({ status }) => <StatusPill status={status} />}
+            />
           </DataTable>
         </TabPanel>
         <TabPanel header='Old Updates Cleanup'>

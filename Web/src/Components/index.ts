@@ -6,6 +6,7 @@ export * from './Common/Flex'
 export * from './Common/Icon'
 export * from './Common/Input'
 export * from './Common/Spinner'
+export * from './Common/StatusPill'
 export * from './Common/Text'
 
 export * from './Layout/Background'
