@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog } from 'primereact/dialog'
 
 import { FC, invalidateQuery } from '../../Services'
@@ -9,6 +9,12 @@ export const Release = ({ update, onHide }) => {
   const [releasing, setRelasing] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [activeTab, setActiveTab] = useState(UpdateInfo.OVERVIEW_TAB_INDEX)
+
+  // Reset to the Overview tab whenever a different update is opened.
+  useEffect(() => {
+    setActiveTab(UpdateInfo.OVERVIEW_TAB_INDEX)
+  }, [update?._id])
 
   const isReleased = update?.status === 'released'
   const isObsolete = update?.status === 'obsolete'
@@ -42,21 +48,33 @@ export const Release = ({ update, onHide }) => {
     ? 'App is currently released'
     : (isObsolete ? 'Rollback' : 'Release')
 
-  const Action = () => (
-    <Flex row fw jb>
-      <Button disabled={isReleased} icon='upload' label={actionLabel} style={{ marginTop: 20, marginBottom: 10 }} onClick={() => setConfirming(true)} />
-      <Button disabled={isReleased} icon='trash' label='DELETE' style={{ marginTop: 20, marginBottom: 10 }} onClick={() => setDeleting(true)} />
-    </Flex>
-  )
+  // Footer is pinned to the bottom of the Dialog by PrimeReact and the body
+  // scrolls above it. Render the actions only on the Overview tab so the
+  // JSON views get the full vertical space.
+  const dialogFooter = activeTab === UpdateInfo.OVERVIEW_TAB_INDEX
+    ? (releasing
+        ? <Flex row fw jc><Spinner /></Flex>
+        : (
+          <Flex row fw jb>
+            <Button disabled={isReleased} icon='upload' label={actionLabel} onClick={() => setConfirming(true)} />
+            <Button disabled={isReleased} icon='trash' label='DELETE' onClick={() => setDeleting(true)} />
+          </Flex>
+          ))
+    : null
 
   if (!update) return null
   return (
     <>
-      <Dialog visible={!!update?._id} modal onHide={releasing ? () => null : onHide} style={{ width: '100%', maxWidth: 800, margin: 20 }} header={<Text value='Upload Details' bold size={28} />}>
+      <Dialog
+        visible={!!update?._id}
+        modal
+        onHide={releasing ? () => null : onHide}
+        style={{ width: '100%', maxWidth: 800, margin: 20 }}
+        header={<Text value='Upload Details' bold size={28} />}
+        footer={dialogFooter}
+      >
         <Flex fw as>
-          <UpdateInfo update={update} />
-          {releasing ? <Spinner /> : <Action />}
-
+          <UpdateInfo update={update} activeIndex={activeTab} onTabChange={setActiveTab} />
         </Flex>
       </Dialog>
 

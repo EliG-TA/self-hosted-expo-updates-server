@@ -5,3 +5,35 @@
 .p-inputtext {
   background-color: rgb(20, 26, 37) !important;
 }
+
+/* UpdateInfo card: keep the status strip + tab nav pinned at the top of
+   the scrolling Dialog body so users always see what they're looking at
+   and can switch tabs without scrolling back up.
+   The two sticky bands share one continuous background and butt up against
+   each other (header height == tab-nav `top`) to avoid any visible gap. */
+.update-info-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-overlay, #1e1e1e);
+  height: 44px;
+  box-sizing: border-box;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  margin: 0 !important;
+  overflow: hidden;
+}
+.update-info-tabview {
+  margin-top: 0 !important;
+}
+.update-info-tabview .p-tabview-nav-container {
+  position: sticky;
+  top: 44px;
+  z-index: 2;
+  background: var(--surface-overlay, #1e1e1e);
+}
+.update-info-tabview .p-tabview-nav {
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
