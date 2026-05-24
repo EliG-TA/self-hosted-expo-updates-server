@@ -462,6 +462,146 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
   )
 }
 
+const OrphanFilesSection = ({ project }) => {
+  const [scanning, setScanning] = useState(false)
+  const [busyPath, setBusyPath] = useState(null)
+  const [result, setResult] = useState(null)
+
+  const handleScan = async () => {
+    setScanning(true)
+    setResult(null)
+    try {
+      const res = await FC.client.service('utils').update('scanOrphans', { project })
+      setResult(res)
+    } catch (e) {
+      window.toast?.show({ severity: 'error', summary: 'Scan failed', detail: e.message })
+    }
+    setScanning(false)
+  }
+
+  const handleDelete = async (orphan) => {
+    if (!window.confirm(`Delete orphan ${orphan.type}\n${orphan.path}\n(${fmtBytes(orphan.sizeBytes)})?`)) return
+    setBusyPath(orphan.path)
+    try {
+      await FC.client.service('utils').update('deleteOrphan', { path: orphan.path, type: orphan.type })
+      invalidateQuery(['diskUsage'])
+      window.toast?.show({ severity: 'info', summary: 'Deleted', detail: orphan.path })
+      await handleScan()
+    } catch (e) {
+      window.toast?.show({ severity: 'error', summary: 'Delete failed', detail: e.message })
+    }
+    setBusyPath(null)
+  }
+
+  return (
+    <div style={{ width: '100%' }}>
+      <Flex fw as style={{ gap: 12, padding: 10 }}>
+        <Text
+          value='Find files on disk that no upload record references. These may be leftovers from interrupted uploads, manual file operations, or restore-from-backup with missing DB rows.'
+          size={12}
+          color='rgba(255,255,255,0.6)'
+        />
+
+        <Flex row style={{ gap: 12, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+          {result && (
+            <>
+              <Flex as>
+                <Text value='Total orphans' size={11} color='rgba(255,255,255,0.5)' />
+                <Text
+                  value={String(result.orphanCount)}
+                  bold
+                  size={20}
+                  color={result.orphanCount > 0 ? '#ffb300' : undefined}
+                />
+              </Flex>
+              <Flex as>
+                <Text value='Orphan zips' size={11} color='rgba(255,255,255,0.5)' />
+                <Text value={String(result.zipCount)} bold size={20} />
+              </Flex>
+              <Flex as>
+                <Text value='Orphan dirs' size={11} color='rgba(255,255,255,0.5)' />
+                <Text value={String(result.dirCount)} bold size={20} />
+              </Flex>
+              <Flex as>
+                <Text value='Total size' size={11} color='rgba(255,255,255,0.5)' />
+                <Text value={fmtBytes(result.totalBytes)} bold size={20} />
+              </Flex>
+            </>
+          )}
+        </Flex>
+
+        <Flex row style={{ marginTop: 10 }}>
+          {scanning
+            ? <Spinner />
+            : (
+              <Button
+                icon='search'
+                label={result ? 'Re-scan' : 'Scan for orphan files'}
+                onClick={handleScan}
+              />
+              )}
+        </Flex>
+
+        {result && result.orphanCount > 0 && (
+          <div style={{ width: '100%', marginTop: 16 }}>
+            <DataTable
+              value={result.orphans}
+              size='small'
+              paginator={result.orphans.length > 10}
+              rows={10}
+              sortField='sizeBytes'
+              sortOrder={-1}
+              style={{ width: '100%' }}
+            >
+              <Column field='type' header='Type' sortable filter style={{ width: 80 }} />
+              <Column field='path' header='Path' sortable filter
+                body={(row) => (
+                  <span style={{
+                    fontFamily: 'ui-monospace, Menlo, monospace',
+                    fontSize: 12,
+                    wordBreak: 'break-all'
+                  }}>{row.path}</span>
+                )}
+              />
+              <Column field='version' header='Version' sortable filter style={{ width: 90 }} />
+              <Column field='sizeBytes' header='Size' sortable style={{ width: 100 }}
+                body={(row) => fmtBytes(row.sizeBytes)}
+              />
+              <Column field='modifiedAt' header='Modified' sortable style={{ width: 170 }}
+                body={(row) => (
+                  <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+                    {row.modifiedAt ? moment(row.modifiedAt).format('YYYY-MM-DD HH:mm:ss') : '—'}
+                  </span>
+                )}
+              />
+              <Column header='Actions' style={{ width: 110 }}
+                body={(row) => (
+                  <Button
+                    icon='trash'
+                    label='Delete'
+                    disabled={busyPath === row.path}
+                    onClick={() => handleDelete(row)}
+                    style={{ padding: '2px 8px', fontSize: 11 }}
+                  />
+                )}
+              />
+            </DataTable>
+          </div>
+        )}
+
+        {result && result.orphanCount === 0 && (
+          <Text
+            value='No orphan files found — DB and filesystem are in sync.'
+            size={12}
+            color='#7fdc96'
+            style={{ marginTop: 10 }}
+          />
+        )}
+      </Flex>
+    </div>
+  )
+}
+
 export const ReleaseManager = ({ app }) => {
   const { data: uploads, isSuccess } = useCQuery(['uploads', app._id])
   const [update, setUpdate] = useState(null)
@@ -514,6 +654,9 @@ export const ReleaseManager = ({ app }) => {
         </TabPanel>
         <TabPanel header='Integrity Check'>
           <IntegrityCheckSection project={app._id} onOpenUpload={setUpdate} />
+        </TabPanel>
+        <TabPanel header='Orphan Files'>
+          <OrphanFilesSection project={app._id} />
         </TabPanel>
       </TabView>
 

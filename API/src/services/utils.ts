@@ -6,6 +6,27 @@ const { checkSingleIntegrity } = require('../modules/expo/integrity')
 const fs = require('fs')
 const path = require('path')
 
+const UPLOADS_ROOT = process.env.UPLOADS_ROOT || '/uploads'
+const UPDATES_ROOT = process.env.UPDATES_ROOT || '/updates'
+
+const dirSizeRecursive = (dir) => {
+  let total = 0
+  const stack = [dir]
+  while (stack.length) {
+    const cur = stack.pop()
+    let entries
+    try { entries = fs.readdirSync(cur, { withFileTypes: true }) } catch (e) { continue }
+    for (const entry of entries) {
+      const full = path.join(cur, entry.name)
+      try {
+        if (entry.isDirectory()) stack.push(full)
+        else if (entry.isFile()) total += fs.statSync(full).size
+      } catch (e) { /* ignore */ }
+    }
+  }
+  return total
+}
+
 class Service {
   constructor (options) {
     this.options = options || {}
@@ -65,8 +86,107 @@ class Service {
     if (id === 'delete') return this.deleteRelease(data)
     if (id === 'cleanupOldUpdates') return this.cleanupOldUpdates(data || {})
     if (id === 'checkIntegrity') return this.checkIntegrity(data || {})
+    if (id === 'scanOrphans') return this.scanOrphans(data || {})
+    if (id === 'deleteOrphan') return this.deleteOrphan(data || {})
 
     throw new Err.BadRequest('Invalid request.')
+  }
+
+  /**
+   * Find files on disk that no `uploads` document references:
+   *   - zip archives in UPLOADS_ROOT not matched by any upload.filename
+   *   - extracted directories in UPDATES_ROOT/<project>/<version>/<id>
+   *     not matched by any upload.path
+   *
+   * Zips are scanned globally (we can't tell project from a zip name
+   * alone), dirs are scoped to the requested project.
+   */
+  async scanOrphans ({ project }) {
+    if (!project) throw new Err.BadRequest('Missing project')
+
+    const allUploads = await this.app.service('uploads').find({ query: {} })
+    const knownZips = new Set(allUploads.map(u => u.filename).filter(Boolean))
+    const knownPaths = new Set(allUploads.map(u => u.path).filter(Boolean))
+
+    const orphans = []
+
+    // Orphan zips — global scan of UPLOADS_ROOT.
+    try {
+      const entries = fs.readdirSync(UPLOADS_ROOT, { withFileTypes: true })
+      for (const e of entries) {
+        if (!e.isFile()) continue
+        if (e.name.startsWith('.')) continue // skip .gitkeep, dotfiles
+        const full = path.join(UPLOADS_ROOT, e.name)
+        if (knownZips.has(full)) continue
+        let st = null
+        try { st = fs.statSync(full) } catch (err) { continue }
+        orphans.push({
+          type: 'zip',
+          path: full,
+          name: e.name,
+          sizeBytes: st.size,
+          modifiedAt: st.mtime
+        })
+      }
+    } catch (e) { /* uploads root missing */ }
+
+    // Orphan dirs — per-project scan of UPDATES_ROOT/<project>/<version>/<id>.
+    const projectDir = path.join(UPDATES_ROOT, project)
+    try {
+      const versions = fs.readdirSync(projectDir, { withFileTypes: true })
+      for (const v of versions) {
+        if (!v.isDirectory()) continue
+        const versionDir = path.join(projectDir, v.name)
+        let uploadDirs
+        try { uploadDirs = fs.readdirSync(versionDir, { withFileTypes: true }) } catch (e) { continue }
+        for (const u of uploadDirs) {
+          if (!u.isDirectory()) continue
+          const full = path.join(versionDir, u.name)
+          if (knownPaths.has(full)) continue
+
+          let mtime = null
+          try { mtime = fs.statSync(full).mtime } catch (e) { /* ignore */ }
+          const sizeBytes = dirSizeRecursive(full)
+
+          orphans.push({
+            type: 'dir',
+            path: full,
+            name: u.name,
+            sizeBytes,
+            modifiedAt: mtime,
+            project,
+            version: v.name
+          })
+        }
+      }
+    } catch (e) { /* project dir missing */ }
+
+    const totalBytes = orphans.reduce((acc, o) => acc + (o.sizeBytes || 0), 0)
+    return {
+      project,
+      orphanCount: orphans.length,
+      zipCount: orphans.filter(o => o.type === 'zip').length,
+      dirCount: orphans.filter(o => o.type === 'dir').length,
+      totalBytes,
+      orphans
+    }
+  }
+
+  async deleteOrphan ({ path: targetPath, type }) {
+    if (!targetPath) throw new Err.BadRequest('Missing path')
+    // Safety: only allow paths inside our managed roots. Without this gate
+    // the endpoint becomes a remote-delete primitive against the API host.
+    if (!targetPath.startsWith(UPLOADS_ROOT + '/') && !targetPath.startsWith(UPDATES_ROOT + '/')) {
+      throw new Err.BadRequest('Refusing to delete path outside managed roots')
+    }
+    const existed = fs.existsSync(targetPath)
+    try {
+      fs.rmSync(targetPath, { force: true, recursive: type === 'dir' })
+    } catch (e) {
+      throw new Err.GeneralError(`Delete failed: ${e.message}`)
+    }
+    const removed = !fs.existsSync(targetPath)
+    return { path: targetPath, existed, removed }
   }
 
   /**
