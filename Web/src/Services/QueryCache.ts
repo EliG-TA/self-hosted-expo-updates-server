@@ -60,6 +60,13 @@ const queries = {
   diskUsage: {
     config: { staleTime: 15 * time.seconds, cacheTime: 60 * time.seconds, refetchInterval: 30 * time.seconds },
     queryFn: () => FC.client.service('disk-usage').find()
+  },
+  updateSizes: {
+    config: queryConfig.frequent,
+    queryFn: (key, uploadId) => uploadId
+      ? FC.client.service('utils').get('updateSizes', { query: { uploadId } })
+      : null,
+    noInitalPrefetch: true
   }
 }
 

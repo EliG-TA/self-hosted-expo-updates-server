@@ -1,6 +1,15 @@
-import { Flex, Input, Text, Colors } from '../../Components'
+import { Flex, Input, Text, Spinner, Colors } from '../../Components'
 import { TabView, TabPanel } from 'primereact/tabview'
+import { useCQuery } from '../../Services'
 import moment from 'moment'
+
+const getSize = (size) => {
+  if (!size) return '0 B'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)} KB`
+  if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`
+  return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
 
 const formatDate = (date) => date ? moment(date).format('YYYY-MM-DD HH:mm:ss') : '—'
 
@@ -57,6 +66,14 @@ const styles = {
     fontWeight: 600,
     textTransform: 'uppercase',
     letterSpacing: 0.5
+  },
+  totalRow: {
+    width: '100%',
+    padding: '6px 0',
+    marginTop: 4,
+    borderTop: '1px solid rgba(159, 168, 218, 0.2)',
+    alignItems: 'flex-start',
+    gap: 8
   }
 }
 
@@ -80,6 +97,35 @@ const Section = ({ title, children, style }) => (
   </Flex>
 )
 
+const SizesSection = ({ uploadId }) => {
+  const { data: sizes, isSuccess } = useCQuery(['updateSizes', uploadId])
+  if (!isSuccess || !sizes) return <Section title='Sizes'><Spinner /></Section>
+
+  const assetsBreakdown = sizes.assetsCount
+    ? `${sizes.assetsCount} files · ${sizes.assetsSharedCount} shared, ${sizes.assetsIosOnlyCount} iOS-only, ${sizes.assetsAndroidOnlyCount} Android-only`
+    : null
+
+  return (
+    <Section title='Sizes'>
+      <Row label='Zip archive' value={getSize(sizes.zipBytes)} />
+      <Row label='Bundle iOS' value={getSize(sizes.bundleByPlatform?.ios)} />
+      <Row label='Bundle Android' value={getSize(sizes.bundleByPlatform?.android)} />
+      <Row label='Assets'>
+        <div>{getSize(sizes.assetsBytes)}</div>
+        {assetsBreakdown && (
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+            {assetsBreakdown}
+          </div>
+        )}
+      </Row>
+      <Flex row style={styles.totalRow}>
+        <div style={{ ...styles.label, fontWeight: 700, color: Colors.text }}>Total</div>
+        <div style={{ ...styles.value, fontWeight: 700, fontSize: 14 }}>{getSize(sizes.total)}</div>
+      </Flex>
+    </Section>
+  )
+}
+
 const OverviewTab = ({ update }) => (
   <div style={{ width: '100%', display: 'block', boxSizing: 'border-box' }}>
     <Section title='Identity' style={{ marginTop: 0 }}>
@@ -101,6 +147,8 @@ const OverviewTab = ({ update }) => (
       <Row label='Original File' value={update.originalname} mono />
       <Row label='Uploaded File' value={update.filename} mono />
     </Section>
+
+    <SizesSection uploadId={update._id} />
   </div>
 )
 
