@@ -335,9 +335,20 @@ class Service {
     const upload = await this.app.service('uploads').get(uploadId)
     if (!upload) throw new Err.NotFound('Upload not found')
 
+    // Prefer the real on-disk size — `upload.size` in Mongo is captured at
+    // upload time and can drift after restore-from-backup, retransfers, or
+    // manual cleanup. Fall back to the DB value only if the file is gone.
+    let zipBytes = 0
+    if (upload.filename) {
+      try { zipBytes = fs.statSync(upload.filename).size }
+      catch (e) { zipBytes = Number(upload.size) || 0 }
+    } else {
+      zipBytes = Number(upload.size) || 0
+    }
+
     const result = {
       uploadId,
-      zipBytes: Number(upload.size) || 0,
+      zipBytes,
       bundleByPlatform: { ios: 0, android: 0 },
       assetsBytes: 0,
       assetsCount: 0,
