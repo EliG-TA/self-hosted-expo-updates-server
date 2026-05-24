@@ -3,8 +3,7 @@ const fs = require('fs')
 const { MongoDBService } = require('@feathersjs/mongodb')
 const error = require('../hooks/error')
 
-// Default Middleware
-const defeultMiddleware = (req, res, next) => {
+const defaultMiddleware = (req, res, next) => {
   next()
 }
 
@@ -23,26 +22,23 @@ module.exports = function (app) {
 
   services.forEach((service) => {
     const { name, middleware, noBsonIDs, hooks, createService } = service
-    // Custom services with special configuration
     if (!name) {
       app.configure(service)
       return true
     }
 
-    // Service Configuration with custom Class / Middleware or standard MongoDB Service
     if (createService) {
       const createdService = createService(defaultOptions)
-      app.use(`/${name}`, createdService, middleware || defeultMiddleware)
+      app.use(name, createdService, middleware || defaultMiddleware)
     } else {
-      const opts = noBsonIDs ? { ...defaultOptions, disableObjectify: true } : defaultOptions
-      const createdService = new MongoDBService(opts)
-      app.use(`/${name}`, createdService)
-      app.get('mongoClient').then((db) => {
-        app.service(name).options.Model = db.collection(name)
-      })
+      const opts = {
+        ...defaultOptions,
+        ...(noBsonIDs ? { disableObjectify: true } : {}),
+        Model: app.get('mongoClient').then((db) => db.collection(name))
+      }
+      app.use(name, new MongoDBService(opts))
     }
 
-    // Hooks Setup
     app.service(name).hooks({ ...hooks, error })
   })
 }
