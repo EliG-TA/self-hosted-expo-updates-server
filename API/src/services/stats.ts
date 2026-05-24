@@ -13,22 +13,42 @@ class Service {
     const clients = await this.app.service('clients').find({ query: { project } })
     const stats = {}
 
-    clients.forEach(({ version, platform, embeddedUpdate, currentUpdate, updateCount, releaseChannel, lastSeen }) => {
+    // First pass — accumulate per-(version,platform,channel) totals and
+    // collect *all* embedded update IDs seen (one runtime can have multiple
+    // native builds, each with its own embedded bundle).
+    clients.forEach(({ version, platform, embeddedUpdate, currentUpdate, releaseChannel, lastSeen }) => {
       const key = `${version}-${platform}-${releaseChannel}`
-      if (!stats[key]) stats[key] = { version, platform, releaseChannel, embeddedUpdate, updates: {} }
-      if (!stats[key].updates[currentUpdate]) stats[key].updates[currentUpdate] = { onThisVersion: 0, updateRequests: 0, lastSeen, isBuild: currentUpdate === embeddedUpdate }
+      if (!stats[key]) {
+        stats[key] = {
+          version,
+          platform,
+          releaseChannel,
+          embeddedUpdates: new Set(),
+          updates: {}
+        }
+      }
+      if (embeddedUpdate) stats[key].embeddedUpdates.add(embeddedUpdate)
+      if (!stats[key].updates[currentUpdate]) {
+        stats[key].updates[currentUpdate] = { onThisVersion: 0, lastSeen }
+      }
       stats[key].updates[currentUpdate].onThisVersion++
-      stats[key].updates[currentUpdate].updateRequests += (updateCount || 0)
-      if (moment(lastSeen).isAfter(stats[key].updates[currentUpdate].lastSeen)) stats[key].updates[currentUpdate].lastSeen = lastSeen
+      if (moment(lastSeen).isAfter(stats[key].updates[currentUpdate].lastSeen)) {
+        stats[key].updates[currentUpdate].lastSeen = lastSeen
+      }
     })
 
-    const result = Object.values(stats).map(({ updates, ...rest }) => ({
-      ...rest,
-      updates: Object.entries(updates).map(([updateId, fields]) => ({
-        updateId,
-        ...fields
-      }))
-    })).sort((a, b) => a.version > b.version)
+    const result = Object.values(stats).map(({ updates, embeddedUpdates, ...rest }) => {
+      const embeddedArr = [...embeddedUpdates]
+      return {
+        ...rest,
+        embeddedUpdates: embeddedArr,
+        updates: Object.entries(updates).map(([updateId, fields]) => ({
+          updateId,
+          ...fields,
+          isBuild: embeddedUpdates.has(updateId)
+        }))
+      }
+    }).sort((a, b) => a.version > b.version ? 1 : -1)
 
     return result
   }
