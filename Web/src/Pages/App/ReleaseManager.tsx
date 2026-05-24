@@ -311,10 +311,17 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
         olderThanDays: computedForDays
       })
       invalidateQuery(['uploads', 'published', 'diskUsage'])
+      const errorCount = res?.errors?.length || 0
+      const detailLines = [
+        `Freed ${fmtBytes(res?.totalBytes || 0)}`,
+        `zips: ${res?.zipsRemoved || 0} removed${res?.zipsMissing ? `, ${res.zipsMissing} missing` : ''}`,
+        `dirs: ${res?.dirsRemoved || 0} removed${res?.dirsMissing ? `, ${res.dirsMissing} missing` : ''}`
+      ]
+      if (errorCount) detailLines.push(`${errorCount} file error(s) — check API logs`)
       window.toast?.show({
-        severity: 'info',
+        severity: errorCount ? 'warn' : 'info',
         summary: `Removed ${res?.removed || 0} old updates`,
-        detail: `Freed ${fmtBytes(res?.totalBytes || 0)}`
+        detail: detailLines.join(' · ')
       })
       // Recompute with the same window so the user sees the post-cleanup
       // state (ideally 0 candidates) without an extra manual click.

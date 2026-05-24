@@ -73,12 +73,33 @@ class Service {
     const upload = await this.app.service('uploads').get(uploadId)
     if (!upload) throw new Err.NotFound('Upload not found')
 
-    if(upload.path) fs.rmSync(upload.path, { recursive: true, force: true })
-    if(upload.filename) fs.rmSync(upload.filename, { force: true })
+    // Per-file ops so callers (notably bulk cleanup) can tell apart "file
+    // was there and got removed", "file already gone", and "rm failed".
+    // Surfaces in the cleanup toast as zips/dirs removed/missing counts.
+    const fileOps = []
+    const removeOne = (filePath, type, opts = {}) => {
+      if (!filePath) {
+        fileOps.push({ type, path: null, existed: false, removed: false, skipped: 'no path in db' })
+        return
+      }
+      const existed = fs.existsSync(filePath)
+      let removed = false
+      let error = null
+      try {
+        fs.rmSync(filePath, { force: true, ...opts })
+        removed = !fs.existsSync(filePath)
+      } catch (e) {
+        error = e.message
+      }
+      fileOps.push({ type, path: filePath, existed, removed, error })
+    }
+
+    removeOne(upload.path, 'extracted-dir', { recursive: true })
+    removeOne(upload.filename, 'zip-archive')
 
     await this.app.service('uploads').remove(upload._id)
 
-    return { message: 'Update Deleted' }
+    return { message: 'Update Deleted', ops: fileOps }
   }
 
   async update (id, data) {
@@ -316,16 +337,31 @@ class Service {
   async cleanupOldUpdates ({ project, olderThanDays = 30 }) {
     const { candidates, totalBytes } = await this.getOldUpdatesCleanupCandidates({ project, olderThanDays })
     let removed = 0
+    let zipsRemoved = 0
+    let dirsRemoved = 0
+    let zipsMissing = 0
+    let dirsMissing = 0
     const errors = []
     for (const c of candidates) {
       try {
-        await this.deleteRelease({ uploadId: c._id })
+        const res = await this.deleteRelease({ uploadId: c._id })
         removed++
+        for (const op of (res.ops || [])) {
+          if (op.error) errors.push({ uploadId: c._id, path: op.path, error: op.error })
+          if (op.type === 'zip-archive') {
+            if (op.removed) zipsRemoved++
+            else if (!op.existed) zipsMissing++
+          }
+          if (op.type === 'extracted-dir') {
+            if (op.removed) dirsRemoved++
+            else if (!op.existed) dirsMissing++
+          }
+        }
       } catch (e) {
         errors.push({ uploadId: c._id, error: e.message })
       }
     }
-    return { removed, totalBytes, errors }
+    return { removed, totalBytes, zipsRemoved, dirsRemoved, zipsMissing, dirsMissing, errors }
   }
 
   async getUpdateSizes ({ query }) {
