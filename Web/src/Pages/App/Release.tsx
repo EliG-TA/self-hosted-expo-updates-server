@@ -109,7 +109,7 @@ export const Release = ({ update, onHide }) => {
                 tooltip={releaseTitle}
                 title={releaseTitle}
               />
-              <Button disabled={isReleased} icon='trash' label='DELETE' onClick={() => setDeleting(true)} />
+              <Button disabled={isReleased} icon='trash' label='DELETE' danger onClick={() => setDeleting(true)} />
             </Flex>
           </Flex>
           ))
@@ -148,7 +148,7 @@ export const Release = ({ update, onHide }) => {
 
         <Flex jb row fw style={{ marginTop: 20 }}>
           <Button icon='ban' label='Cancel' onClick={() => setDeleting(false)} />
-          <Button icon='check' label='DELETE' onClick={handleAction('delete')} />
+          <Button icon='check' label='DELETE' danger onClick={handleAction('delete')} />
         </Flex>
       </Dialog>
     </>

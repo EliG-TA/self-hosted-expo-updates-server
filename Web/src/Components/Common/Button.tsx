@@ -3,13 +3,16 @@ import { motion } from 'framer-motion'
 
 import { Colors, Icon, Text } from '..'
 
-export function Button ({ round, disabled, icon, label, onClick, style, iconStyle, width, hidden }) {
+export function Button ({ round, disabled, icon, label, onClick, style, iconStyle, width, hidden, danger }) {
+  const bg = danger ? Colors.danger : Colors.primary
+  const fg = danger ? Colors.textOnDanger : Colors.textOnPrimary
+  const iconFg = danger ? Colors.iconOnDanger : Colors.iconOnPrimary
   const buttonStyle = {
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    backgroundColor: Colors.primary,
+    backgroundColor: bg,
     borderRadius: 8,
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.6 : 1,
@@ -36,8 +39,8 @@ export function Button ({ round, disabled, icon, label, onClick, style, iconStyl
         onTap={disabled ? null : onClick}
         style={buttonStyle}
       >
-        {icon ? <Icon color={Colors.iconOnPrimary} name={icon} size={16} style={{ marginLeft: -2, ...iconStyle }} /> : null}
-        {label ? (<Text color={Colors.textOnPrimary} title bold upCase size={16} center value={label} style={{ marginLeft: icon ? 15 : 0, flexGrow: width ? 1 : 0, textAlign: 'center' }} />) : null}
+        {icon ? <Icon color={iconFg} name={icon} size={16} style={{ marginLeft: -2, ...iconStyle }} /> : null}
+        {label ? (<Text color={fg} title bold upCase size={16} center value={label} style={{ marginLeft: icon ? 15 : 0, flexGrow: width ? 1 : 0, textAlign: 'center' }} />) : null}
       </motion.div>
       )
 }

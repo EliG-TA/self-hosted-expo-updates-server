@@ -395,6 +395,7 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
                     ? `Delete ${result.count} old update(s)`
                     : 'Nothing to delete'}
                   disabled={!result.count}
+                  danger={!!result.count}
                   onClick={() => setConfirming(true)}
                 />
                 )
@@ -463,6 +464,7 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
         title='Delete Old Updates'
         confirmIcon='trash'
         confirmLabel={result?.count ? `Delete ${result.count} update(s)` : 'Delete'}
+        confirmDanger
         onConfirm={runCleanup}
         onCancel={() => setConfirming(false)}
         loading={deleting}
@@ -600,6 +602,7 @@ const OrphanFilesSection = ({ project }) => {
                   <Button
                     icon='trash'
                     label='Delete'
+                    danger
                     disabled={busyPath === row.path}
                     onClick={() => setPendingDelete(row)}
                     style={{ padding: '2px 8px', fontSize: 11 }}
@@ -625,6 +628,7 @@ const OrphanFilesSection = ({ project }) => {
         title='Delete Orphan File'
         confirmIcon='trash'
         confirmLabel='Delete'
+        confirmDanger
         onConfirm={runDelete}
         onCancel={() => setPendingDelete(null)}
         loading={!!busyPath}

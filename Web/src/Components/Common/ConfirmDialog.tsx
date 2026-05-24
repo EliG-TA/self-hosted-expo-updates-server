@@ -16,6 +16,7 @@ export const ConfirmDialog = ({
   children,
   confirmLabel = 'Confirm',
   confirmIcon = 'check',
+  confirmDanger = false,
   cancelLabel = 'Cancel',
   cancelIcon = 'ban',
   onConfirm,
@@ -34,7 +35,7 @@ export const ConfirmDialog = ({
       {children}
       <Flex jb row fw style={{ marginTop: 20 }}>
         <Button icon={cancelIcon} label={cancelLabel} onClick={onCancel} disabled={loading} />
-        <Button icon={confirmIcon} label={confirmLabel} onClick={onConfirm} disabled={loading} />
+        <Button icon={confirmIcon} label={confirmLabel} onClick={onConfirm} disabled={loading} danger={confirmDanger} />
       </Flex>
     </Dialog>
   )
