@@ -37,18 +37,21 @@ class Service {
       }
     })
 
+    // Second pass — flatten and mark which updates correspond to embedded
+    // builds (an update is "embedded" if it appears in the group's
+    // embeddedUpdates set).
     const result = Object.values(stats).map(({ updates, embeddedUpdates, ...rest }) => {
-      const embeddedArr = [...embeddedUpdates]
+      const embeddedList = [...embeddedUpdates]
       return {
         ...rest,
-        embeddedUpdates: embeddedArr,
+        embeddedUpdates: embeddedList,
         updates: Object.entries(updates).map(([updateId, fields]) => ({
           updateId,
           ...fields,
           isBuild: embeddedUpdates.has(updateId)
         }))
       }
-    }).sort((a, b) => a.version > b.version ? 1 : -1)
+    }).sort((a, b) => a.version > b.version ? -1 : a.version < b.version ? 1 : 0)
 
     return result
   }
