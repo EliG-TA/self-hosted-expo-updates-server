@@ -5,7 +5,7 @@ import { TabView, TabPanel } from 'primereact/tabview'
 import moment from 'moment'
 
 import { FC, useCQuery, invalidateQuery } from '../../Services'
-import { Button, Card, Flex, Spinner, Text, Colors, StatusPill } from '../../Components'
+import { Button, Card, Flex, Spinner, Text, Colors, StatusPill, ConfirmDialog } from '../../Components'
 import { Release } from './Release'
 import { UpdateInstructions } from './UpdateInstructions'
 
@@ -263,6 +263,7 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
   const [deleting, setDeleting] = useState(false)
   const [result, setResult] = useState(null) // { count, totalBytes, olderThanDays } when computed
   const [opening, setOpening] = useState(null) // uploadId currently being fetched for the dialog
+  const [confirming, setConfirming] = useState(false)
 
   const handleCalculate = async (daysOverride) => {
     const days = daysOverride ?? olderThanDays
@@ -299,12 +300,10 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
     setOpening(null)
   }
 
-  const handleCleanup = async () => {
+  const runCleanup = async () => {
     if (!result?.count) return
     const computedForDays = result.computedForDays
-    const msg = `Delete ${result.count} old update(s) (${fmtBytes(result.totalBytes)}) not used by any client in the last ${computedForDays} days?\n\nOnly currently-released updates are excluded — everything else (obsolete, ready, …) is eligible.\n\nThis permanently removes files and database records.`
-    if (!window.confirm(msg)) return
-
+    setConfirming(false)
     setDeleting(true)
     try {
       const res = await FC.client.service('utils').update('cleanupOldUpdates', {
@@ -396,7 +395,7 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
                     ? `Delete ${result.count} old update(s)`
                     : 'Nothing to delete'}
                   disabled={!result.count}
-                  onClick={handleCleanup}
+                  onClick={() => setConfirming(true)}
                 />
                 )
           )}
@@ -458,6 +457,25 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
           />
         )}
       </Flex>
+
+      <ConfirmDialog
+        visible={confirming}
+        title='Delete Old Updates'
+        confirmIcon='trash'
+        confirmLabel={result?.count ? `Delete ${result.count} update(s)` : 'Delete'}
+        onConfirm={runCleanup}
+        onCancel={() => setConfirming(false)}
+        loading={deleting}
+      >
+        {result && (
+          <>
+            <Text value={`You are about to delete ${result.count} update(s) (${fmtBytes(result.totalBytes)}) that no client has used in the last ${result.computedForDays} day${result.computedForDays === 1 ? '' : 's'}.`} />
+            <Text value='Only currently-released updates are excluded — everything else (obsolete, ready, …) is eligible.' style={{ marginTop: 20 }} />
+            <Text value='This permanently removes files and database records.' style={{ marginTop: 20 }} />
+            <Text value='Are you sure?' style={{ marginTop: 20 }} />
+          </>
+        )}
+      </ConfirmDialog>
     </div>
   )
 }
@@ -466,6 +484,7 @@ const OrphanFilesSection = ({ project }) => {
   const [scanning, setScanning] = useState(false)
   const [busyPath, setBusyPath] = useState(null)
   const [result, setResult] = useState(null)
+  const [pendingDelete, setPendingDelete] = useState(null) // orphan being confirmed
 
   const handleScan = async () => {
     setScanning(true)
@@ -479,8 +498,10 @@ const OrphanFilesSection = ({ project }) => {
     setScanning(false)
   }
 
-  const handleDelete = async (orphan) => {
-    if (!window.confirm(`Delete orphan ${orphan.type}\n${orphan.path}\n(${fmtBytes(orphan.sizeBytes)})?`)) return
+  const runDelete = async () => {
+    const orphan = pendingDelete
+    if (!orphan) return
+    setPendingDelete(null)
     setBusyPath(orphan.path)
     try {
       await FC.client.service('utils').update('deleteOrphan', { path: orphan.path, type: orphan.type })
@@ -580,7 +601,7 @@ const OrphanFilesSection = ({ project }) => {
                     icon='trash'
                     label='Delete'
                     disabled={busyPath === row.path}
-                    onClick={() => handleDelete(row)}
+                    onClick={() => setPendingDelete(row)}
                     style={{ padding: '2px 8px', fontSize: 11 }}
                   />
                 )}
@@ -598,6 +619,33 @@ const OrphanFilesSection = ({ project }) => {
           />
         )}
       </Flex>
+
+      <ConfirmDialog
+        visible={!!pendingDelete}
+        title='Delete Orphan File'
+        confirmIcon='trash'
+        confirmLabel='Delete'
+        onConfirm={runDelete}
+        onCancel={() => setPendingDelete(null)}
+        loading={!!busyPath}
+      >
+        {pendingDelete && (
+          <>
+            <Text value={`You are about to delete an orphan ${pendingDelete.type}:`} />
+            <Text
+              value={pendingDelete.path}
+              style={{
+                marginTop: 12,
+                fontFamily: 'ui-monospace, Menlo, monospace',
+                fontSize: 12,
+                wordBreak: 'break-all'
+              }}
+            />
+            <Text value={`Size: ${fmtBytes(pendingDelete.sizeBytes)}`} style={{ marginTop: 8 }} />
+            <Text value='Are you sure?' style={{ marginTop: 20 }} />
+          </>
+        )}
+      </ConfirmDialog>
     </div>
   )
 }

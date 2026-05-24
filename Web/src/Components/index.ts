@@ -1,6 +1,7 @@
 export * from './Common/Button'
 export * from './Common/Card'
 export * from './Common/Colors'
+export * from './Common/ConfirmDialog'
 
 export * from './Common/Flex'
 export * from './Common/Icon'
