@@ -27,6 +27,11 @@ services:
       - NODE_ENV=development
       - PUBLIC_URL=http://10.0.0.30:3000
       - DASBHOARD_THROTTLE_MSEC=5000
+      # Docker Desktop's virtio-fs reports nonsense for bind-mounted paths,
+      # so the disk-usage chip would show garbage totals. Point statfs at
+      # the VM overlay root for meaningful numbers in dev. On prod Linux
+      # remove this (or set it to /updates where /updates is a real volume).
+      - DISK_STAT_PATH=/
 
   web:
     build:

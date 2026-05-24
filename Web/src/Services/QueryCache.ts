@@ -56,6 +56,10 @@ const queries = {
     config: queryConfig.rare,
     queryFn: (key, app) => FC.client.service('stats').get(app),
     noInitalPrefetch: true
+  },
+  diskUsage: {
+    config: { staleTime: 15 * time.seconds, cacheTime: 60 * time.seconds, refetchInterval: 30 * time.seconds },
+    queryFn: () => FC.client.service('disk-usage').find()
   }
 }
 
