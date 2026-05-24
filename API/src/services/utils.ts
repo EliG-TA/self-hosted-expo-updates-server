@@ -48,8 +48,94 @@ class Service {
   async update (id, data) {
     if (id === 'release') return this.setRelease(data)
     if (id === 'delete') return this.deleteRelease(data)
+    if (id === 'cleanupOldUpdates') return this.cleanupOldUpdates(data || {})
 
     throw new Err.BadRequest('Invalid request.')
+  }
+
+  /**
+   * Find uploads safe to delete:
+   *   1. status is anything except 'released' (released = currently live for
+   *      some channel+version — never touch)
+   *   2. createdAt is older than `olderThanDays`
+   *   3. No client currently reports the upload's updateId as `currentUpdate`
+   *      (nobody is pinned to this bundle right now)
+   *
+   * `clients.currentUpdate` is overwritten whenever a device upgrades, so
+   * once everyone has migrated off an old release the field never points
+   * at it again. Combined with the age check this gives a safe
+   * "old AND nobody's on it AND not the active release" rule.
+   */
+  async getOldUpdatesCleanupCandidates ({ project, olderThanDays = 30 }) {
+    if (!project) throw new Err.BadRequest('Missing project')
+
+    const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000)
+    const cleanable = await this.app.service('uploads').find({
+      query: { project, status: { $ne: 'released' } }
+    })
+
+    const candidates = []
+    let totalBytes = 0
+
+    for (const up of cleanable) {
+      // (1) age gate — skip uploads created more recently than the window.
+      const createdAt = up.createdAt ? new Date(up.createdAt) : null
+      if (!createdAt || createdAt > cutoff) continue
+
+      // (2) skip if anyone is still on this updateId right now (only
+      // meaningful if the upload actually has an updateId — e.g. a 'ready'
+      // upload that was never released still gets one assigned on extract).
+      if (up.updateId) {
+        const activeNow = await this.app.service('clients').find({
+          query: { currentUpdate: up.updateId, $limit: 1 }
+        })
+        const stillActive = (activeNow?.data || activeNow || []).length > 0
+        if (stillActive) continue
+      }
+
+      // Compute size with the SAME logic as the update info card. On failure
+      // leave the field null so the UI can show "—" rather than a wrong number.
+      let sizeBytes = null
+      try {
+        const sizes = await this.getUpdateSizes({ query: { uploadId: up._id } })
+        sizeBytes = sizes.total
+      } catch (e) { /* leave sizeBytes = null */ }
+
+      candidates.push({
+        _id: up._id,
+        updateId: up.updateId,
+        version: up.version,
+        releaseChannel: up.releaseChannel,
+        gitCommit: up.gitCommit,
+        status: up.status,
+        createdAt: up.createdAt,
+        sizeBytes
+      })
+      if (typeof sizeBytes === 'number') totalBytes += sizeBytes
+    }
+
+    return {
+      project,
+      olderThanDays,
+      count: candidates.length,
+      totalBytes,
+      candidates
+    }
+  }
+
+  async cleanupOldUpdates ({ project, olderThanDays = 30 }) {
+    const { candidates, totalBytes } = await this.getOldUpdatesCleanupCandidates({ project, olderThanDays })
+    let removed = 0
+    const errors = []
+    for (const c of candidates) {
+      try {
+        await this.deleteRelease({ uploadId: c._id })
+        removed++
+      } catch (e) {
+        errors.push({ uploadId: c._id, error: e.message })
+      }
+    }
+    return { removed, totalBytes, errors }
   }
 
   async getUpdateSizes ({ query }) {
@@ -116,6 +202,9 @@ class Service {
     if (id === 'generateSelfSigned') return generateSelfSigned()
     if (id === 'getUploadKey') return ({ uploadKey: this.app.get('uploadKey') })
     if (id === 'updateSizes') return this.getUpdateSizes(params || {})
+    if (id === 'oldUpdatesCleanupCandidates') {
+      return this.getOldUpdatesCleanupCandidates(params?.query || {})
+    }
     throw new Err.BadRequest('Invalid request.')
   }
 }
