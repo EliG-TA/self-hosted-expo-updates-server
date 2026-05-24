@@ -6,6 +6,7 @@ import { ConfigServer } from './ConfigServer'
 import { ConfigApp } from './ConfigApp'
 import { ReleaseManager } from './ReleaseManager'
 import { PublishedUpdates } from './PublishedUpdates'
+import { BsdiffManager } from './BsdiffManager'
 
 export default function App () {
   const { appId = '' } = useParams()
@@ -21,6 +22,7 @@ export default function App () {
     <Flex fw js style={{ padding: 20, marginBottom: 300 }}>
       <ReleaseManager app={appUpdate} />
       <PublishedUpdates app={appUpdate} />
+      <BsdiffManager app={appUpdate} />
       <ConfigServer state={[appUpdate, setAppUpdate]} />
       <ConfigApp app={appUpdate} />
     </Flex>

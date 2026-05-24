@@ -3,6 +3,7 @@ const socketio = require('@feathersjs/socketio')
 
 const expressconfig = require('./express.config')
 const logger = require('./logger')
+const patchesWorker = require('./patches/worker')
 
 module.exports = (express) => (app) => {
   // Load Feathers configuration
@@ -28,4 +29,8 @@ module.exports = (express) => (app) => {
   // Configure a middleware for 404s and the error handler
   app.use(express.notFound())
   app.use(express.errorHandler({ logger }))
+
+  // Background bsdiff patch generation queue. Polls patches with status
+  // 'pending' on a timer and walks them through generate → validate.
+  patchesWorker.start(app)
 }

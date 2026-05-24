@@ -1,21 +1,10 @@
 const fs = require('fs')
 const path = require('path')
 const { getMetadataSync, getUpdateHash } = require('./helpers')
+const { getLaunchAssetPath } = require('./patch')
 
 const isReadable = (p) => {
   try { fs.accessSync(p, fs.constants.R_OK); return true } catch (e) { return false }
-}
-
-// Inlined here because the only other place this logic lives is bsdiff's
-// patch.ts (which we don't depend on). Two short copies are cheaper than a
-// new shared module the moment bsdiff isn't loaded.
-const launchBundlePath = (upload, platform) => {
-  const { metadataJson } = getMetadataSync(upload)
-  const platformMeta = metadataJson?.fileMetadata?.[platform]
-  if (!platformMeta?.bundle) {
-    throw new Error(`No bundle for platform ${platform} in update ${upload.updateId}`)
-  }
-  return path.join(upload.path, platformMeta.bundle)
 }
 
 /**
@@ -25,6 +14,9 @@ const launchBundlePath = (upload, platform) => {
  * Used by:
  *   - the full project-wide integrity walk (utils.checkIntegrity)
  *   - the pre-flight guard in utils.setRelease
+ *   - the asset endpoint patch flow (refuses to serve / queue a patch
+ *     for broken bundles)
+ *   - the patches worker (refuses to generate patches between broken bundles)
  */
 const checkSingleIntegrity = (up) => {
   const issues = []
@@ -79,7 +71,7 @@ const checkSingleIntegrity = (up) => {
         if (!platMeta) continue
 
         let bundleFull = null
-        try { bundleFull = launchBundlePath(up, platform) }
+        try { bundleFull = getLaunchAssetPath(up, platform) }
         catch (e) { err('bundle', `${platform} bundle: ${e.message}`) }
 
         if (bundleFull) {
@@ -112,4 +104,24 @@ const checkSingleIntegrity = (up) => {
   }
 }
 
-module.exports = { checkSingleIntegrity }
+/**
+ * Narrower check: does this upload have any error that would make a launch
+ * bundle for the given platform broken? Used by asset/patch flows so we
+ * don't fail on iOS issues when an Android client is asking.
+ */
+const isLaunchBundleHealthy = (up, platform) => {
+  const { issues } = checkSingleIntegrity(up)
+  const blocking = issues.filter(i => {
+    if (i.severity !== 'error') return false
+    // Categories that affect bundle serving regardless of platform:
+    if (['zip', 'dir', 'metadata'].includes(i.category)) return true
+    // Bundle category: only block if message mentions our platform.
+    if (i.category === 'bundle') return i.message.toLowerCase().includes(platform)
+    // Other categories (app-json, package-json, hash, asset) don't break the
+    // launch bundle stream itself — clients can still receive bytes.
+    return false
+  })
+  return { healthy: blocking.length === 0, blocking }
+}
+
+module.exports = { checkSingleIntegrity, isLaunchBundleHealthy }

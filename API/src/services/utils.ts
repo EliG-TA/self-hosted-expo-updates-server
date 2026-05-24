@@ -2,6 +2,7 @@ const s = require('../hooks/security')
 const Err = require('@feathersjs/errors')
 const { generateSelfSigned } = require('../modules/expo/certs')
 const { getMetadataSync } = require('../modules/expo/helpers')
+const { getLaunchAssetPath, sumPatchesSize } = require('../modules/expo/patch')
 const { checkSingleIntegrity } = require('../modules/expo/integrity')
 const fs = require('fs')
 const path = require('path')
@@ -391,6 +392,7 @@ class Service {
       assetsSharedCount: 0,
       assetsIosOnlyCount: 0,
       assetsAndroidOnlyCount: 0,
+      patchesBytes: 0,
       total: 0
     }
 
@@ -399,13 +401,13 @@ class Service {
 
     if (metadata?.fileMetadata && upload.path) {
       // Bundles are platform-specific (different Hermes bytecode targets).
+      // getLaunchAssetPath reads the bundle path from metadata; the bsdiff
+      // module owns it because it's the same lookup the patch flow uses.
       for (const platform of ['ios', 'android']) {
-        const platformMeta = metadata.fileMetadata[platform]
-        if (!platformMeta?.bundle) continue
         try {
-          const bundleFull = path.join(upload.path, platformMeta.bundle)
+          const bundleFull = getLaunchAssetPath(upload, platform)
           result.bundleByPlatform[platform] = fs.statSync(bundleFull).size
-        } catch (e) { /* missing */ }
+        } catch (e) { /* missing or no bundle for this platform */ }
       }
 
       // Assets are mostly shared across platforms (MD5-keyed by content).
@@ -427,10 +429,13 @@ class Service {
       }
     }
 
+    try { result.patchesBytes = sumPatchesSize(upload) } catch (e) { /* ignore */ }
+
     result.total =
       result.zipBytes +
       result.bundleByPlatform.ios + result.bundleByPlatform.android +
-      result.assetsBytes
+      result.assetsBytes +
+      result.patchesBytes
 
     return result
   }

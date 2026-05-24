@@ -84,7 +84,7 @@ class Service {
       return hanldeManifestData(this.app, { query, headers })
     }
 
-    if (id === 'assets') return handleAssetData({ query })
+    if (id === 'assets') return handleAssetData(this.app, { query, headers })
     throw new Err.BadRequest('Invalid request.')
   }
 }

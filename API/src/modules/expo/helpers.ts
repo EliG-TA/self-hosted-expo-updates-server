@@ -46,12 +46,20 @@ module.exports.getAssetMetadataSync = ({ update, filePath, ext, isLaunchAsset, p
   const keyExtensionSuffix = isLaunchAsset ? 'bundle' : ext
   const contentType = isLaunchAsset ? 'application/javascript' : mime.getType(ext)
 
+  const baseUrl = `${process.env.PUBLIC_URL}/api/assets?asset=${assetFilePath}&contentType=${encodeURI(contentType)}&platform=${platform}`
+  // Launch assets need to know which (project, updateId) they're being
+  // served as so the patch flow on the server can look up patches between
+  // the client's currentUpdateId and this one.
+  const url = isLaunchAsset
+    ? `${baseUrl}&project=${encodeURIComponent(update.project)}&updateId=${encodeURIComponent(update.updateId)}`
+    : baseUrl
+
   return {
     hash: assetHash,
     key,
     fileExtension: `.${keyExtensionSuffix}`,
     contentType,
-    url: `${process.env.PUBLIC_URL}/api/assets?asset=${assetFilePath}&contentType=${encodeURI(contentType)}&platform=${platform}`
+    url
   }
 }
 

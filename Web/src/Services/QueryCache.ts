@@ -72,6 +72,20 @@ const queries = {
       ? FC.client.service('utils').get('updateSizes', { query: { uploadId } })
       : null,
     noInitalPrefetch: true
+  },
+  patches: {
+    config: queryConfig.frequent,
+    queryFn: (key, project) => FC.client.service('patches').find({
+      query: { ...(project ? { project } : {}), $sort: { createdAt: -1 }, $limit: 500 }
+    }),
+    noInitalPrefetch: true
+  },
+  patchJobs: {
+    config: queryConfig.frequent,
+    queryFn: (key, project) => FC.client.service('patch-jobs').find({
+      query: { ...(project ? { project } : {}), $sort: { startedAt: -1 }, $limit: 200 }
+    }),
+    noInitalPrefetch: true
   }
 }
 

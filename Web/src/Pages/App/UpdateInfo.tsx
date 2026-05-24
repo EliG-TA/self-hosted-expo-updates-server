@@ -1,6 +1,8 @@
-import { Flex, Input, Text, Spinner, Colors } from '../../Components'
+import { Flex, Input, Text, Button, Spinner, Colors } from '../../Components'
 import { TabView, TabPanel } from 'primereact/tabview'
-import { useCQuery } from '../../Services'
+import { DataTable } from 'primereact/datatable'
+import { Column } from 'primereact/column'
+import { useCQuery, FC, invalidateQuery } from '../../Services'
 import moment from 'moment'
 
 const getSize = (size) => {
@@ -16,7 +18,13 @@ const formatDate = (date) => date ? moment(date).format('YYYY-MM-DD HH:mm:ss') :
 const STATUS_COLORS = {
   released: '#4caf50',
   obsolete: '#9e9e9e',
-  ready: '#42a5f5'
+  ready: '#42a5f5',
+  // patch lifecycle statuses (rendered in the Patches tab)
+  pending: '#ffb300',
+  generating: '#42a5f5',
+  validating: '#42a5f5',
+  failed: '#ef5350',
+  'not-beneficial': '#9e9e9e'
 }
 
 const styles = {
@@ -118,11 +126,48 @@ const SizesSection = ({ uploadId }) => {
           </div>
         )}
       </Row>
+      <Row label='Patches' value={getSize(sizes.patchesBytes)} />
       <Flex row style={styles.totalRow}>
         <div style={{ ...styles.label, fontWeight: 700, color: Colors.text }}>Total</div>
         <div style={{ ...styles.value, fontWeight: 700, fontSize: 14 }}>{getSize(sizes.total)}</div>
       </Flex>
     </Section>
+  )
+}
+
+const PatchesTab = ({ uploadId, project }) => {
+  const { data: patches, isSuccess } = useCQuery(['patches', project])
+  if (!isSuccess) return <Spinner />
+  const related = (patches?.data || patches || []).filter(p => p.toUploadId === uploadId)
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this patch?')) return
+    try {
+      await FC.client.service('patches').remove(id)
+      invalidateQuery(['patches', 'diskUsage'])
+    } catch (e) {
+      window.toast.show({ severity: 'error', summary: 'Error', detail: e.message })
+    }
+  }
+
+  return (
+    <div style={{ width: '100%', display: 'block', boxSizing: 'border-box' }}>
+      {!related.length && <Text value='No patches generated yet.' size={12} color='rgba(255,255,255,0.5)' />}
+      {related.length > 0 && (
+        <DataTable value={related} size='small' style={{ width: '100%' }}>
+          <Column field='fromUpdateId' header='From' body={(row) => <span style={styles.mono}>{row.fromUpdateId?.slice(0, 8) || '—'}</span>} />
+          <Column field='platform' header='Platform' />
+          <Column field='createdAt' header='Date' body={(row) => formatDate(row.createdAt)} />
+          <Column field='status' header='Status' body={(row) => <StatusBadge status={row.status} />} />
+          <Column field='size' header='Size' body={(row) => getSize(row.size || 0)} />
+          <Column field='compressionRatio' header='Ratio' body={(row) => row.compressionRatio ? `${(row.compressionRatio * 100).toFixed(0)}%` : '—'} />
+          <Column field='servedCount' header='Served' body={(row) => row.servedCount || 0} />
+          <Column header='' body={(row) => (
+            <Button icon='trash' danger onClick={() => handleDelete(row._id)} style={{ padding: 4 }} />
+          )} />
+        </DataTable>
+      )}
+    </div>
   )
 }
 
@@ -188,6 +233,11 @@ export const UpdateInfo = ({ update, activeIndex, onTabChange }) => {
       >
         <TabPanel header='Overview'>
           <OverviewTab update={update} />
+        </TabPanel>
+        <TabPanel header='Patches'>
+          <div style={{ width: '100%', minHeight: 600 }}>
+            <PatchesTab uploadId={update._id} project={update.project} />
+          </div>
         </TabPanel>
         <TabPanel header='app.json'>
           <div style={{ width: '100%', minHeight: 600 }}>

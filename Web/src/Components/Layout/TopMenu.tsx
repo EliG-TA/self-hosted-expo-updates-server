@@ -33,11 +33,13 @@ const DiskUsageChip = () => {
     )
   }
 
-  const { updatesBytes = 0, usedBytes = 0, freeBytes = 0, totalBytes = 0 } = data
+  const { updatesBytes = 0, patchesBytes = 0, usedBytes = 0, freeBytes = 0, totalBytes = 0 } = data
   const usedPct = totalBytes > 0 ? Math.min(100, Math.round((usedBytes / totalBytes) * 100)) : 0
   return (
     <Flex row style={styles.chip}>
       <Text value={`Updates: ${formatBytes(updatesBytes)}`} size={11} color={Colors.text} />
+      <Text value='·' size={11} color={Colors.text} style={{ margin: '0 6px' }} />
+      <Text value={`Patches: ${formatBytes(patchesBytes)}`} size={11} color={Colors.text} />
       <Text value='·' size={11} color={Colors.text} style={{ margin: '0 6px' }} />
       <Text
         value={`Disk: ${formatBytes(usedBytes)} / ${formatBytes(totalBytes)} (${usedPct}%)`}

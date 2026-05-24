@@ -1,0 +1,146 @@
+const fs = require('fs')
+const path = require('path')
+const crypto = require('crypto')
+const { getMetadataSync } = require('./helpers')
+
+const PATCH_BENEFIT_RATIO = 0.75
+const PATCH_DIR_NAME = '_patches'
+const BSDIFF_MAGIC = Buffer.from('BSDIFF40', 'utf8')
+
+let hdiffPromise = null
+const loadHdiff = () => {
+  if (!hdiffPromise) {
+    // @hot-updater/bsdiff is ESM-only; load it via dynamic import from CommonJS.
+    hdiffPromise = import('@hot-updater/bsdiff').then(m => m.hdiff)
+  }
+  return hdiffPromise
+}
+
+const sha256 = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex')
+
+const getLaunchAssetPath = (upload, platform) => {
+  const { metadataJson } = getMetadataSync(upload)
+  const platformMeta = metadataJson?.fileMetadata?.[platform]
+  if (!platformMeta?.bundle) {
+    throw new Error(`No bundle for platform ${platform} in update ${upload.updateId}`)
+  }
+  return path.join(upload.path, platformMeta.bundle)
+}
+
+const getPatchDir = (toUpload) => path.join(toUpload.path, PATCH_DIR_NAME)
+
+const getPatchFilePath = (toUpload, fromUpload, platform) =>
+  path.join(getPatchDir(toUpload), `from-${fromUpload.updateId}-${platform}.patch`)
+
+const ensurePatchDir = (toUpload) => {
+  const dir = getPatchDir(toUpload)
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+const generatePatch = async (fromUpload, toUpload, platform) => {
+  const fromPath = getLaunchAssetPath(fromUpload, platform)
+  const toPath = getLaunchAssetPath(toUpload, platform)
+  if (!fs.existsSync(fromPath)) throw new Error(`Base bundle missing: ${fromPath}`)
+  if (!fs.existsSync(toPath)) throw new Error(`Target bundle missing: ${toPath}`)
+
+  const fromBuf = fs.readFileSync(fromPath)
+  const toBuf = fs.readFileSync(toPath)
+
+  const hdiff = await loadHdiff()
+  const patchBytes = await hdiff(fromBuf, toBuf)
+  // @hot-updater/bsdiff returns a Uint8Array-like; ensure Buffer for fs.write
+  const patchBuf = Buffer.isBuffer(patchBytes) ? patchBytes : Buffer.from(patchBytes.buffer || patchBytes)
+
+  ensurePatchDir(toUpload)
+  const outPath = getPatchFilePath(toUpload, fromUpload, platform)
+  fs.writeFileSync(outPath, patchBuf)
+
+  return {
+    path: outPath,
+    size: patchBuf.length,
+    targetSize: toBuf.length,
+    targetHash: sha256(toBuf),
+    fromHash: sha256(fromBuf)
+  }
+}
+
+/**
+ * Server-side validation of a freshly generated patch.
+ *
+ * Strategy (no server-side apply — see docs/bsdiff-implementation-plan.md):
+ * 1. Magic header check — patch must start with BSDIFF40 (the format both
+ *    iOS bspatch.c and Android BSPatch.cpp expect).
+ * 2. Non-empty body.
+ * 3. Benefit check — patch.length < 0.75 * target.length, else patch wastes
+ *    client CPU/battery for negligible network savings → terminal `not-beneficial`.
+ *
+ * Final correctness (sha256 of patched output == target hash) is enforced by
+ * the native client (see expo-updates FileDownloader iOS/Android), which
+ * auto-falls back to a full download on mismatch. Duplicating that on the
+ * server is dead work.
+ */
+const validatePatch = async ({ patchPath, expectedTargetSize }) => {
+  let patchBuf
+  try {
+    patchBuf = fs.readFileSync(patchPath)
+  } catch (e) {
+    return { ok: false, reason: `failed to read patch file: ${e.message}` }
+  }
+
+  if (patchBuf.length < BSDIFF_MAGIC.length) {
+    return { ok: false, reason: `patch too small (${patchBuf.length} bytes)` }
+  }
+  if (!patchBuf.subarray(0, BSDIFF_MAGIC.length).equals(BSDIFF_MAGIC)) {
+    return {
+      ok: false,
+      reason: `magic mismatch: expected BSDIFF40 header`
+    }
+  }
+
+  const benefitRatio = patchBuf.length / expectedTargetSize
+  if (benefitRatio >= PATCH_BENEFIT_RATIO) {
+    return {
+      ok: false,
+      reason: `not-beneficial: patch is ${(benefitRatio * 100).toFixed(1)}% of target (threshold ${PATCH_BENEFIT_RATIO * 100}%)`,
+      notBeneficial: true
+    }
+  }
+
+  return { ok: true }
+}
+
+const deletePatchFile = (patchPath) => {
+  if (patchPath && fs.existsSync(patchPath)) {
+    try {
+      fs.unlinkSync(patchPath)
+    } catch (e) {
+      // best-effort; file may already be gone
+    }
+  }
+}
+
+const sumPatchesSize = (toUpload) => {
+  const dir = getPatchDir(toUpload)
+  if (!fs.existsSync(dir)) return 0
+  let total = 0
+  for (const entry of fs.readdirSync(dir)) {
+    try {
+      total += fs.statSync(path.join(dir, entry)).size
+    } catch (e) { /* ignore */ }
+  }
+  return total
+}
+
+module.exports = {
+  getLaunchAssetPath,
+  getPatchDir,
+  getPatchFilePath,
+  generatePatch,
+  validatePatch,
+  deletePatchFile,
+  sumPatchesSize,
+  sha256,
+  PATCH_BENEFIT_RATIO,
+  PATCH_DIR_NAME
+}
