@@ -10,16 +10,21 @@ const time = {
 const queryConfig = {
   rare: {
     staleTime: 1 * time.hours,
-    cacheTime: 2 * time.hours
+    cacheTime: 2 * time.hours,
+    // Preserve last data during refetch so paginators/sorts don't reset
+    // and collapsed/expanded cards don't flicker on background refresh.
+    keepPreviousData: true
   },
   frequent: {
     staleTime: 5 * time.minutes,
-    cacheTime: 10 * time.minutes
+    cacheTime: 10 * time.minutes,
+    keepPreviousData: true
   },
   autoFetchFrequent: {
     staleTime: 3 * time.minutes,
     cacheTime: 5 * time.minutes,
-    refetchInterval: 30 * time.seconds
+    refetchInterval: 30 * time.seconds,
+    keepPreviousData: true
   }
 }
 

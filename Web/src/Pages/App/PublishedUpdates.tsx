@@ -1,5 +1,5 @@
 import { Text, Card, Spinner } from '../../Components'
-import { useCQuery } from '../../Services'
+import { useCQuery, useCollapsedState } from '../../Services'
 import { UpdateInfo } from './UpdateInfo'
 import _ from 'lodash'
 
@@ -15,8 +15,57 @@ const compareVersions = (a, b) => {
   return 0
 }
 
+// Each card-with-hook needs its own component, otherwise the hook would be
+// called inside .map(), violating the Rules of Hooks.
+const UpdateCard = ({ project, update, defaultCollapsed }) => {
+  const [collapsed, setCollapsed] = useCollapsedState(
+    `published:${project}:update:${update._id}`,
+    defaultCollapsed
+  )
+  return (
+    <Card
+      collapsable
+      collapsed={collapsed}
+      onToggle={setCollapsed}
+      title={`${update.releaseChannel} - ${update.gitCommit}`}
+      style={{ marginTop: 10 }}
+    >
+      <UpdateInfo update={update} />
+    </Card>
+  )
+}
+
+const VersionCard = ({ project, version, updates, defaultCollapsed }) => {
+  const [collapsed, setCollapsed] = useCollapsedState(
+    `published:${project}:version:${version}`,
+    defaultCollapsed
+  )
+  return (
+    <Card
+      collapsable
+      collapsed={collapsed}
+      onToggle={setCollapsed}
+      title={`Version ${version}`}
+      style={{ marginTop: 20 }}
+    >
+      {updates.map((update, ind) => (
+        <UpdateCard
+          key={update._id}
+          project={project}
+          update={update}
+          defaultCollapsed={!!ind}
+        />
+      ))}
+    </Card>
+  )
+}
+
 export const PublishedUpdates = ({ app }) => {
   const { data: published, isSuccess } = useCQuery(['published', app._id])
+  const [collapsed, setCollapsed] = useCollapsedState(
+    `published:${app._id}:root`,
+    false
+  )
 
   if (!isSuccess) return <Spinner />
 
@@ -32,16 +81,23 @@ export const PublishedUpdates = ({ app }) => {
   })
 
   return (
-    <Card title='PUBLISHED UPDATES' collapsable collapsed={!published.length} fadeIn style={{ padding: 20, width: '100%', maxWidth: 900, marginTop: 40 }}>
+    <Card
+      title='PUBLISHED UPDATES'
+      collapsable
+      collapsed={collapsed}
+      onToggle={setCollapsed}
+      fadeIn
+      style={{ padding: 20, width: '100%', maxWidth: 900, marginTop: 40 }}
+    >
       {!published.length && <Text value='No published updates yet, upload and release one to see it here' />}
       {sortedVersions.map((version, versionInd) => (
-        <Card key={version} collapsable collapsed={!!versionInd} title={`Version ${version}`} style={{ marginTop: 20 }}>
-          {grouped[version].map((update, ind) => (
-            <Card key={update._id} collapsable collapsed={!!ind} title={`${update.releaseChannel} - ${update.gitCommit}`} style={{ marginTop: 10 }}>
-              <UpdateInfo update={update} />
-            </Card>
-          ))}
-        </Card>
+        <VersionCard
+          key={version}
+          project={app._id}
+          version={version}
+          updates={grouped[version]}
+          defaultCollapsed={!!versionInd}
+        />
       ))}
     </Card>
   )
