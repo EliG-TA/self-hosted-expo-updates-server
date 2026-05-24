@@ -10,14 +10,29 @@ export const Release = ({ update, onHide }) => {
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [activeTab, setActiveTab] = useState(UpdateInfo.OVERVIEW_TAB_INDEX)
+  const [integrity, setIntegrity] = useState(null) // { errorCount, warningCount, issues } | null
+  const [integrityLoading, setIntegrityLoading] = useState(false)
 
-  // Reset to the Overview tab whenever a different update is opened.
+  // Reset to the Overview tab + re-check integrity whenever a different
+  // update is opened. Empty issues result is treated as "all green" so the
+  // Release/Rollback action is enabled.
   useEffect(() => {
     setActiveTab(UpdateInfo.OVERVIEW_TAB_INDEX)
+    setIntegrity(null)
+    if (!update?._id) return
+    setIntegrityLoading(true)
+    FC.client.service('utils').update('checkIntegrity', { uploadId: update._id })
+      .then(res => {
+        const row = res?.problems?.[0]
+        setIntegrity(row || { errorCount: 0, warningCount: 0, issues: [] })
+      })
+      .catch(() => setIntegrity({ errorCount: 0, warningCount: 0, issues: [] }))
+      .finally(() => setIntegrityLoading(false))
   }, [update?._id])
 
   const isReleased = update?.status === 'released'
   const isObsolete = update?.status === 'obsolete'
+  const hasIntegrityErrors = (integrity?.errorCount || 0) > 0
 
   const handleAction = (action) => async () => {
     setDeleting(false)
@@ -48,6 +63,13 @@ export const Release = ({ update, onHide }) => {
     ? 'App is currently released'
     : (isObsolete ? 'Rollback' : 'Release')
 
+  const releaseDisabled = isReleased || hasIntegrityErrors || integrityLoading
+  const releaseTitle = isReleased
+    ? 'Already released'
+    : (hasIntegrityErrors
+        ? `Release blocked: ${integrity.errorCount} integrity error(s). Fix the files or re-upload before releasing.`
+        : 'Release this update')
+
   // Footer is pinned to the bottom of the Dialog by PrimeReact and the body
   // scrolls above it. Render the actions only on the Overview tab so the
   // JSON views get the full vertical space.
@@ -55,9 +77,40 @@ export const Release = ({ update, onHide }) => {
     ? (releasing
         ? <Flex row fw jc><Spinner /></Flex>
         : (
-          <Flex row fw jb>
-            <Button disabled={isReleased} icon='upload' label={actionLabel} onClick={() => setConfirming(true)} />
-            <Button disabled={isReleased} icon='trash' label='DELETE' onClick={() => setDeleting(true)} />
+          <Flex fw as style={{ gap: 10 }}>
+            {hasIntegrityErrors && (
+              <div style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 6,
+                background: 'rgba(239, 83, 80, 0.12)',
+                border: '1px solid rgba(239, 83, 80, 0.4)'
+              }}>
+                <Text
+                  value={`Integrity check failed — ${integrity.errorCount} error(s) detected. Release/rollback disabled.`}
+                  size={12}
+                  color='#ef9a9a'
+                  bold
+                />
+                {integrity.issues.filter(i => i.severity === 'error').slice(0, 4).map((iss, i) => (
+                  <Text key={i} value={`• ${iss.message}`} size={11} color='#ef9a9a' />
+                ))}
+                {integrity.issues.filter(i => i.severity === 'error').length > 4 && (
+                  <Text value='…and more (see Integrity Check tab)' size={11} color='#ef9a9a' />
+                )}
+              </div>
+            )}
+            <Flex row fw jb>
+              <Button
+                disabled={releaseDisabled}
+                icon='upload'
+                label={actionLabel}
+                onClick={() => setConfirming(true)}
+                tooltip={releaseTitle}
+                title={releaseTitle}
+              />
+              <Button disabled={isReleased} icon='trash' label='DELETE' onClick={() => setDeleting(true)} />
+            </Flex>
           </Flex>
           ))
     : null

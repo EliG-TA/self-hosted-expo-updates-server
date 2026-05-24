@@ -2,6 +2,7 @@ const s = require('../hooks/security')
 const Err = require('@feathersjs/errors')
 const { generateSelfSigned } = require('../modules/expo/certs')
 const { getMetadataSync } = require('../modules/expo/helpers')
+const { checkSingleIntegrity } = require('../modules/expo/integrity')
 const fs = require('fs')
 const path = require('path')
 
@@ -19,6 +20,20 @@ class Service {
 
     const upload = await this.app.service('uploads').get(uploadId)
     if (!upload) throw new Err.NotFound('Upload not found')
+
+    // Pre-flight: refuse to release/rollback an upload whose files are
+    // broken — clients would hit 404/corrupt-bundle errors. Warnings are
+    // OK (e.g. updateId/updateHash missing from older records).
+    const integrity = checkSingleIntegrity(upload)
+    if (integrity.errorCount > 0) {
+      const lines = integrity.issues
+        .filter(i => i.severity === 'error')
+        .map(i => `• ${i.message}`)
+        .join('\n')
+      throw new Err.BadRequest(
+        `Cannot release: this update has ${integrity.errorCount} integrity error(s):\n${lines}`
+      )
+    }
 
     const uploads = await this.app.service('uploads').find({ query: { project: upload.project, version: upload.version, releaseChannel: upload.releaseChannel } })
 
@@ -49,8 +64,63 @@ class Service {
     if (id === 'release') return this.setRelease(data)
     if (id === 'delete') return this.deleteRelease(data)
     if (id === 'cleanupOldUpdates') return this.cleanupOldUpdates(data || {})
+    if (id === 'checkIntegrity') return this.checkIntegrity(data || {})
 
     throw new Err.BadRequest('Invalid request.')
+  }
+
+  /**
+   * Walk every upload for the given project and report missing/broken
+   * files. Per-upload heavy lifting lives in modules/expo/integrity.ts;
+   * here we just iterate and aggregate counters / row summaries.
+   *
+   * When called with a single uploadId, returns the same shape but with
+   * exactly one row in `problems` (or none, if the upload is clean) —
+   * the Release dialog uses this to gate the Release/Rollback action.
+   */
+  async checkIntegrity ({ project, uploadId }) {
+    if (!project && !uploadId) throw new Err.BadRequest('Missing project or uploadId')
+
+    const uploads = uploadId
+      ? [await this.app.service('uploads').get(uploadId)]
+      : await this.app.service('uploads').find({ query: { project } })
+
+    const problems = []
+    const categoryCounts = {}
+
+    for (const up of uploads) {
+      const { issues, errorCount, warningCount } = checkSingleIntegrity(up)
+      if (!issues.length) continue
+
+      for (const iss of issues) {
+        categoryCounts[iss.category] = (categoryCounts[iss.category] || 0) + 1
+      }
+
+      problems.push({
+        _id: up._id,
+        updateId: up.updateId,
+        version: up.version,
+        releaseChannel: up.releaseChannel,
+        status: up.status,
+        createdAt: up.createdAt,
+        issues,
+        errorCount,
+        warningCount
+      })
+    }
+
+    const errorRowCount = problems.filter(p => p.errorCount > 0).length
+    const warningRowCount = problems.filter(p => p.errorCount === 0 && p.warningCount > 0).length
+
+    return {
+      project,
+      checkedCount: uploads.length,
+      problemCount: problems.length,
+      errorRowCount,
+      warningRowCount,
+      categoryCounts,
+      problems
+    }
   }
 
   /**
