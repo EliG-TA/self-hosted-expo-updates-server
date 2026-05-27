@@ -7,6 +7,22 @@
   "license": "MIT",
   "scripts": {
     "dev:run": "cd Docker/development; docker-compose up --build",
-    "dev:stop": "cd Docker/development; docker-compose down"
+    "dev:stop": "cd Docker/development; docker-compose down",
+    "lint": "eslint API Web",
+    "lint:fix": "eslint API Web --fix",
+    "format": "prettier --ignore-path .prettierignore --write .",
+    "format:check": "prettier --ignore-path .prettierignore --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-simple-import-sort": "^13.0.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3",
+    "typescript-eslint": "^8.60.0"
   }
 }

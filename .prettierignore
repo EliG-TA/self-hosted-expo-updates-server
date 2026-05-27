@@ -1,0 +1,45 @@
+# Ignore everything by default. JetBrains can run Prettier on broad scopes, so
+# explicitly opt in only files that belong to the formatted codebase.
+*
+
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
+!.github/workflows/*.yaml
+
+!.prettierignore
+!.prettierrc
+!eslint.config.mjs
+!package.json
+!README.md
+!README DOCKER.md
+
+!API/
+!API/package.json
+!API/tsconfig.json
+!API/config/
+!API/config/*.json
+!API/public/
+!API/public/**/*.html
+!API/src/
+!API/src/**
+
+!Web/
+!Web/package.json
+!Web/tsconfig.json
+!Web/vite.config.ts
+!Web/src/
+!Web/src/**
+
+**/node_modules/**
+**/dist/**
+**/build/**
+**/coverage/**
+API/uploads/**
+API/certs/**
+Docker/**
+ExampleManaged/**
+ExampleEjected/**
+Web/public/**
+config.json
+bun.lock

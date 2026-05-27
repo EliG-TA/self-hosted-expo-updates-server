@@ -35,11 +35,6 @@
     "socket.io-client": "^4.8.3",
     "use-force-update": "^2.0.0"
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
-  },
   "browserslist": {
     "production": [
       ">0.2%",
