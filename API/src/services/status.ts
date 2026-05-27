@@ -1,21 +1,24 @@
-// @ts-nocheck
-const { logger } = require('../modules')
+import type { AppLike, UnknownRecord } from '../types'
+import { logger } from '../modules'
 class Service {
-  constructor (options) {
+  options: UnknownRecord
+  app: AppLike
+
+  constructor (options?: UnknownRecord) {
     this.options = options || {}
   }
 
-  setup (app) {
+  setup (app: AppLike) {
     this.app = app
   }
 
-  async get (data) {
+  async get (data?: unknown) {
     return 'NotFound'
   }
 
   async find () {
     try {
-      const [user] = await this.app.services.users.find({ query: { $limit: 1 } })
+      const [user] = await this.app.services.users.find({ query: { $limit: 1 } }) as UnknownRecord[]
       return { ok: !!user }
     } catch (error) {
       logger.error('API - public/status', { error })
@@ -24,9 +27,9 @@ class Service {
   }
 }
 
-module.exports = {
+export default {
   name: 'status',
-  createService: (params) => new Service(params),
+  createService: (params?: UnknownRecord) => new Service(params),
   hooks: {
     before: {
       all: [],

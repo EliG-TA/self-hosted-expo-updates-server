@@ -1,23 +1,27 @@
-// @ts-nocheck
-const s = require('../hooks/security')
+import type { AppLike, UnknownRecord } from '../types'
+import s from '../hooks/security'
+
 
 class Service {
-  constructor (options) {
+  options: UnknownRecord
+  app: AppLike
+
+  constructor (options?: UnknownRecord) {
     this.options = options || {}
   }
 
-  setup (app) {
+  setup (app: AppLike) {
     this.app = app
   }
 
-  async create (data, params) {
+  async create (data?: unknown, params?: UnknownRecord) {
     return 'OK'
   }
 }
 
-module.exports = {
+export default {
   name: 'messages',
-  createService: (options) => new Service(options),
+  createService: (options?: UnknownRecord) => new Service(options),
   hooks: {
     before: {
       all: s.defaultSecurity(),
@@ -40,4 +44,4 @@ module.exports = {
   }
 }
 
-module.exports.Service = Service
+export { Service }

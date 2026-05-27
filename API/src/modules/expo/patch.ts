@@ -1,7 +1,9 @@
-const fs = require('fs')
-const path = require('path')
-const crypto = require('crypto')
-const { getMetadataSync } = require('./helpers')
+import * as fs from 'fs'
+import * as path from 'path'
+import * as crypto from 'crypto'
+import type { UploadRecord } from '../../types'
+import { getMetadataSync } from './helpers'
+
 
 const PATCH_BENEFIT_RATIO = 0.75
 const PATCH_DIR_NAME = '_patches'
@@ -18,7 +20,7 @@ const loadHdiff = () => {
 
 const sha256 = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex')
 
-const getLaunchAssetPath = (upload, platform) => {
+export const getLaunchAssetPath = (upload, platform) => {
   const { metadataJson } = getMetadataSync(upload)
   const platformMeta = metadataJson?.fileMetadata?.[platform]
   if (!platformMeta?.bundle) {
@@ -27,9 +29,9 @@ const getLaunchAssetPath = (upload, platform) => {
   return path.join(upload.path, platformMeta.bundle)
 }
 
-const getPatchDir = (toUpload) => path.join(toUpload.path, PATCH_DIR_NAME)
+export const getPatchDir = (toUpload) => path.join(toUpload.path, PATCH_DIR_NAME)
 
-const getPatchFilePath = (toUpload, fromUpload, platform) =>
+export const getPatchFilePath = (toUpload, fromUpload, platform) =>
   path.join(getPatchDir(toUpload), `from-${fromUpload.updateId}-${platform}.patch`)
 
 const ensurePatchDir = (toUpload) => {
@@ -38,7 +40,7 @@ const ensurePatchDir = (toUpload) => {
   return dir
 }
 
-const generatePatch = async (fromUpload, toUpload, platform) => {
+export const generatePatch = async (fromUpload, toUpload, platform) => {
   const fromPath = getLaunchAssetPath(fromUpload, platform)
   const toPath = getLaunchAssetPath(toUpload, platform)
   if (!fs.existsSync(fromPath)) throw new Error(`Base bundle missing: ${fromPath}`)
@@ -80,7 +82,7 @@ const generatePatch = async (fromUpload, toUpload, platform) => {
  * auto-falls back to a full download on mismatch. Duplicating that on the
  * server is dead work.
  */
-const validatePatch = async ({ patchPath, expectedTargetSize }) => {
+export const validatePatch = async ({ patchPath, expectedTargetSize }) => {
   let patchBuf
   try {
     patchBuf = fs.readFileSync(patchPath)
@@ -110,7 +112,7 @@ const validatePatch = async ({ patchPath, expectedTargetSize }) => {
   return { ok: true }
 }
 
-const deletePatchFile = (patchPath) => {
+export const deletePatchFile = (patchPath) => {
   if (patchPath && fs.existsSync(patchPath)) {
     try {
       fs.unlinkSync(patchPath)
@@ -120,7 +122,7 @@ const deletePatchFile = (patchPath) => {
   }
 }
 
-const sumPatchesSize = (toUpload) => {
+export const sumPatchesSize = (toUpload) => {
   const dir = getPatchDir(toUpload)
   if (!fs.existsSync(dir)) return 0
   let total = 0
@@ -132,15 +134,4 @@ const sumPatchesSize = (toUpload) => {
   return total
 }
 
-module.exports = {
-  getLaunchAssetPath,
-  getPatchDir,
-  getPatchFilePath,
-  generatePatch,
-  validatePatch,
-  deletePatchFile,
-  sumPatchesSize,
-  sha256,
-  PATCH_BENEFIT_RATIO,
-  PATCH_DIR_NAME
-}
+export { sha256, PATCH_BENEFIT_RATIO, PATCH_DIR_NAME }

@@ -1,27 +1,34 @@
-// @ts-nocheck
-const s = require('../hooks/security')
-const Err = require('@feathersjs/errors')
-const { hanldeManifestData, handleManifestResponse } = require('../modules/expo/manifest')
-const { handleAssetData, handleAssetResponse } = require('../modules/expo/asset')
-const { getRequestParams } = require('../modules/expo/request')
+import type { AppLike, ClientRecord, UnknownRecord } from '../types'
+import s from '../hooks/security'
+
+import * as Err from '@feathersjs/errors'
+import { hanldeManifestData, handleManifestResponse } from '../modules/expo/manifest'
+import { handleAssetData, handleAssetResponse } from '../modules/expo/asset'
+import { getRequestParams } from '../modules/expo/request'
 
 class Service {
-  constructor (options) {
+  options: UnknownRecord
+  app: AppLike
+  throttleTime: number
+  throttleController: Record<string, { lastCall?: number; debounce?: ReturnType<typeof setTimeout> }>
+
+  constructor (options?: UnknownRecord) {
     this.options = options || {}
   }
 
-  setup (app) {
+  setup (app: AppLike) {
     this.app = app
-    this.throttleTime = app.get('statsThrottle') || 5000
+    const throttleTime = app.get('statsThrottle')
+    this.throttleTime = typeof throttleTime === 'number' ? throttleTime : Number(throttleTime) || 5000
     this.throttleController = {}
   }
 
-  sendReactQueryUpdate (project) {
+  sendReactQueryUpdate (project: string) {
     this.throttleController[project].lastCall = Date.now()
     this.app.service('messages').create({ action: 'update', keys: [['stats', project]] })
   }
 
-  updateClientsReactQuery (project) {
+  updateClientsReactQuery (project: string) {
     if (!this.throttleController[project]) { // Never called an update before, calling now
       this.throttleController[project] = {}
       this.sendReactQueryUpdate(project)
@@ -41,7 +48,7 @@ class Service {
     }
   }
 
-  async clientMetrics (id, { query, headers }) {
+  async clientMetrics (id: unknown, { query, headers }: { query: UnknownRecord; headers: Record<string, string | undefined> }) {
     const {
       project,
       platform,
@@ -53,7 +60,7 @@ class Service {
     const embeddedUpdate = headers['expo-embedded-update-id']
     const currentUpdate = headers['expo-current-update-id']
     if (!_id) return false
-    const [client] = await this.app.service('clients').find({ query: { _id } })
+    const [client] = await this.app.service('clients').find({ query: { _id } }) as ClientRecord[]
     if (client) {
       await this.app.service('clients').patch(client._id, {
         lastSeen: new Date().toISOString(),
@@ -79,7 +86,7 @@ class Service {
     this.updateClientsReactQuery(project)
   }
 
-  async get (id, { query, headers }) {
+  async get (id: string, { query, headers }: { query: UnknownRecord; headers: Record<string, string | undefined> }) {
     if (id === 'manifest') {
       this.clientMetrics(id, { query, headers })
       return hanldeManifestData(this.app, { query, headers })
@@ -92,10 +99,10 @@ class Service {
 
 const apiService = new Service()
 
-module.exports = {
+export default {
   name: 'api',
-  createService: (options) => apiService,
-  middleware: (req, res, next) => {
+  createService: (options?: UnknownRecord) => apiService,
+  middleware: (req: { headers: Record<string, string | undefined> }, res: { data: { type: string } }, next: () => void) => {
     const protocolVersion = req.headers["expo-protocol-version"];
 
     if (res.data.type === 'manifest') return handleManifestResponse(res, protocolVersion)
@@ -124,4 +131,4 @@ module.exports = {
   }
 }
 
-module.exports.Service = Service
+export { Service }

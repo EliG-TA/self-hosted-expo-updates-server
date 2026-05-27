@@ -1,8 +1,10 @@
-const s = require('../hooks/security')
+import type { HookContextLike, UnknownRecord } from '../types'
+import s from '../hooks/security'
 
-const setBsdiffDefault = (context) => {
-  if (context.data && context.data.bsdiffEnabled === undefined) {
-    context.data.bsdiffEnabled = false
+const setBsdiffDefault = (context: HookContextLike) => {
+  const data = context.data as UnknownRecord | undefined
+  if (data && data.bsdiffEnabled === undefined) {
+    data.bsdiffEnabled = false
   }
   return context
 }
@@ -10,14 +12,15 @@ const setBsdiffDefault = (context) => {
 // When the toggle flips, tell every connected dashboard to invalidate its
 // app/apps queries so the BsdiffManager UI reflects the new state without
 // a manual refresh.
-const broadcastBsdiffToggle = (context) => {
-  if (!context.data) return context
-  if (!Object.prototype.hasOwnProperty.call(context.data, 'bsdiffEnabled')) return context
+const broadcastBsdiffToggle = (context: HookContextLike) => {
+  const data = context.data as UnknownRecord | undefined
+  if (!data) return context
+  if (!Object.prototype.hasOwnProperty.call(data, 'bsdiffEnabled')) return context
   context.app.service('messages').create({ action: 'update', keys: ['app', 'apps'] })
   return context
 }
 
-module.exports = {
+export default {
   name: 'apps',
   noBsonIDs: true,
   hooks: {

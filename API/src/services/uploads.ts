@@ -1,11 +1,12 @@
-const s = require('../hooks/security')
-const { deletePatchFile } = require('../modules/expo/patch')
-const { logger } = require('../modules')
+import type { HookContextLike, PatchRecord } from '../types'
+import s from '../hooks/security'
+import { deletePatchFile } from '../modules/expo/patch'
+import { logger } from '../modules'
 
 // When an upload is deleted, walk every patch that references it (as
 // either from or to) and remove the patch file + DB row. Otherwise stale
 // patches would linger on disk pointing at a missing source/target bundle.
-const cascadeRemovePatches = async (context) => {
+const cascadeRemovePatches = async (context: HookContextLike) => {
   if (!context.id) return context
   try {
     const patches = context.app.service('patches')
@@ -15,18 +16,18 @@ const cascadeRemovePatches = async (context) => {
         $limit: 1000
       }
     })
-    const docs = related?.data || related || []
+    const docs = Array.isArray(related) ? related as PatchRecord[] : ((related as { data?: PatchRecord[] })?.data || [])
     for (const doc of docs) {
       deletePatchFile(doc.path)
       try { await patches.remove(doc._id) } catch (e) { /* already gone */ }
     }
   } catch (e) {
-    logger.warn('uploads.cascadeRemovePatches: failed', { id: context.id, error: e.message })
+    logger.warn('uploads.cascadeRemovePatches: failed', { id: context.id, error: e instanceof Error ? e.message : String(e) })
   }
   return context
 }
 
-module.exports = {
+export default {
   name: 'uploads',
   hooks: {
     before: {

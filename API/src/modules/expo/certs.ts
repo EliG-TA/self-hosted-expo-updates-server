@@ -1,5 +1,7 @@
-const { md, pki, random, util } = require('node-forge')
-const nullthrows = require('nullthrows')
+import { md, pki, random, util } from 'node-forge'
+import nullthrowsModule from 'nullthrows'
+
+const nullthrows: <T>(value: T | null | undefined) => T = nullthrowsModule
 
 // a hexString is considered negative if its most significant bit is 1
 // because serial numbers use ones' complement notation
@@ -66,7 +68,7 @@ const generateSelfSignedCodeSigningCertificate = ({
   return cert
 }
 
-module.exports.generateSelfSigned = async () => {
+export const generateSelfSigned = async () => {
   const keyPair = pki.rsa.generateKeyPair()
   const validityNotBefore = new Date()
   const validityNotAfter = new Date()

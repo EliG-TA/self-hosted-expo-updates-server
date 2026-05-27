@@ -1,21 +1,51 @@
 // feathers-blob service
-const blobService = require('feathers-blob')
-const fsBlob = require('fs-blob-store')
-const blobStorage = fsBlob('/uploads')
-const multipartMiddleware = require('multer')()
-const { protect } = require('@feathersjs/authentication-local').hooks
-const Err = require('@feathersjs/errors')
-const fs = require('fs')
-const unzipper = require('unzipper')
-const { getJSONInfo } = require('../modules/expo/asset')
-const { getUpdateId, getUpdateHash } = require('../modules/expo/helpers')
+import type { AppLike, HookContextLike, UnknownRecord, UploadRecord } from '../types'
+import blobService from 'feathers-blob'
+import fsBlob from 'fs-blob-store'
+import multer from 'multer'
+import { hooks } from '@feathersjs/authentication-local'
+import * as Err from '@feathersjs/errors'
+import * as fs from 'fs'
+import * as unzipper from 'unzipper'
+import dauria from 'dauria'
+import { getJSONInfo } from '../modules/expo/asset'
+import { getUpdateId, getUpdateHash } from '../modules/expo/helpers'
 
-const createDocument = async (context) => {
+const blobStorage = fsBlob('/uploads')
+const multipartMiddleware = multer()
+const { protect } = hooks
+
+interface BlobUploadResult extends UnknownRecord {
+  id?: string
+  contentType?: string
+  size?: number
+  uploadId?: string
+  updateId?: string
+  updateHash?: string
+  project?: string
+  releaseChannel?: string
+  message?: string
+}
+
+interface UploadHookContext extends HookContextLike {
+  result: BlobUploadResult
+  data: UnknownRecord
+  params: HookContextLike['params'] & {
+    headers: Record<string, string | undefined>
+    file?: {
+      originalname: string
+      mimetype: string
+      buffer: Buffer
+    }
+  }
+}
+
+const createDocument = async (context: UploadHookContext) => {
   if (!context.result.id || !context.result.size) {
     throw new Err.GeneralError('Upload failed')
   }
 
-  const upload = await context.app.service('uploads')._create({
+  const upload = await context.app.service('uploads')._create?.({
     createdAt: new Date(),
     originalname: context.params.file.originalname,
     filename: `/uploads/${context.result.id}`,
@@ -26,7 +56,7 @@ const createDocument = async (context) => {
     gitBranch: context.params.headers['git-branch'] || 'Unknown',
     gitCommit: context.params.headers['git-commit'] || 'Unknown',
     status: 'ready'
-  })
+  }) as UploadRecord
 
   const path = `/updates/${upload.project}/${upload.version}/${upload._id}`
   fs.rmSync(path, { recursive: true, force: true })
@@ -75,7 +105,7 @@ const createDocument = async (context) => {
   return context
 }
 
-const prepareForUpload = async (context) => {
+const prepareForUpload = async (context: UploadHookContext) => {
   if (!context.params.headers['release-channel']) {
     throw new Err.BadRequest('Upload failed: missing release-channel header')
   }
@@ -90,7 +120,7 @@ const prepareForUpload = async (context) => {
       context.params.file.mimetype = 'application/zip'
     }
     const file = context.params.file
-    const uri = require('dauria').getBase64DataURI(file.buffer, file.mimetype)
+    const uri = dauria.getBase64DataURI(file.buffer, file.mimetype)
     context.data = { uri }
   }
   return context
@@ -117,9 +147,9 @@ const getHooks = () => ({
   }
 })
 
-module.exports = (app) => {
+export default (app: AppLike & { use(path: string, ...handlers: unknown[]): void }) => {
   const blob = blobService({ Model: blobStorage })
-  const middleware = (req, res, next) => {
+  const middleware = (req: { feathers: UnknownRecord; file?: unknown }, res: unknown, next: () => void) => {
     req.feathers.file = req.file
     next()
   }

@@ -1,18 +1,36 @@
-// @ts-nocheck
-const s = require('../hooks/security')
-const moment = require('moment')
+import type { AppLike, ClientRecord, UnknownRecord } from '../types'
+import s from '../hooks/security'
+
+import moment from 'moment'
+
+interface UpdateStats {
+  onThisVersion: number
+  lastSeen?: string | Date
+}
+
+interface StatsBucket {
+  version?: string
+  platform?: string
+  releaseChannel?: string
+  embeddedUpdates: Set<string>
+  updates: Record<string, UpdateStats>
+}
+
 class Service {
-  constructor (options) {
+  options: UnknownRecord
+  app: AppLike
+
+  constructor (options?: UnknownRecord) {
     this.options = options || {}
   }
 
-  setup (app) {
+  setup (app: AppLike) {
     this.app = app
   }
 
-  async get (project) {
-    const clients = await this.app.service('clients').find({ query: { project } })
-    const stats = {}
+  async get (project: string) {
+    const clients = await this.app.service('clients').find({ query: { project } }) as ClientRecord[]
+    const stats: Record<string, StatsBucket> = {}
 
     // First pass — accumulate per-(version,platform,channel) totals and
     // collect *all* embedded update IDs seen (one runtime can have multiple
@@ -29,6 +47,7 @@ class Service {
         }
       }
       if (embeddedUpdate) stats[key].embeddedUpdates.add(embeddedUpdate)
+      if (!currentUpdate) return
       if (!stats[key].updates[currentUpdate]) {
         stats[key].updates[currentUpdate] = { onThisVersion: 0, lastSeen }
       }
@@ -58,9 +77,9 @@ class Service {
   }
 }
 
-module.exports = {
+export default {
   name: 'stats',
-  createService: (params) => new Service(params),
+  createService: (params?: UnknownRecord) => new Service(params),
   hooks: {
     before: {
       all: s.defaultSecurity(),

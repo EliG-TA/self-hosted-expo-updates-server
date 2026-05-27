@@ -1,4 +1,4 @@
-const process = require('process')
+import process from 'process'
 
 const doShutdown = () => {
   process.exit()

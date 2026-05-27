@@ -1,7 +1,9 @@
-const fs = require('fs')
-const path = require('path')
-const { getMetadataSync, getUpdateHash } = require('./helpers')
-const { getLaunchAssetPath } = require('./patch')
+import * as fs from 'fs'
+import * as path from 'path'
+import type { IntegrityIssue, IntegrityResult, UploadRecord } from '../../types'
+import { getMetadataSync, getUpdateHash } from './helpers'
+import { getLaunchAssetPath } from './patch'
+
 
 const isReadable = (p) => {
   try { fs.accessSync(p, fs.constants.R_OK); return true } catch (e) { return false }
@@ -18,7 +20,7 @@ const isReadable = (p) => {
  *     for broken bundles)
  *   - the patches worker (refuses to generate patches between broken bundles)
  */
-const checkSingleIntegrity = (up) => {
+export const checkSingleIntegrity = (up) => {
   const issues = []
   const err = (category, message) => issues.push({ severity: 'error', category, message })
   const warn = (category, message) => issues.push({ severity: 'warning', category, message })
@@ -105,11 +107,11 @@ const checkSingleIntegrity = (up) => {
 }
 
 /**
- * Narrower check: does this upload have any error that would make a launch
+ * Narrower check: does this upload have an error that would make a launch
  * bundle for the given platform broken? Used by asset/patch flows so we
  * don't fail on iOS issues when an Android client is asking.
  */
-const isLaunchBundleHealthy = (up, platform) => {
+export const isLaunchBundleHealthy = (up, platform) => {
   const { issues } = checkSingleIntegrity(up)
   const blocking = issues.filter(i => {
     if (i.severity !== 'error') return false
@@ -123,5 +125,3 @@ const isLaunchBundleHealthy = (up, platform) => {
   })
   return { healthy: blocking.length === 0, blocking }
 }
-
-module.exports = { checkSingleIntegrity, isLaunchBundleHealthy }

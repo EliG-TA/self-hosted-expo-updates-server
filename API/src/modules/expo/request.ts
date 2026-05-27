@@ -1,6 +1,6 @@
-const Err = require('@feathersjs/errors')
+import * as Err from '@feathersjs/errors'
 
-module.exports.getRequestParams = ({ query, headers }) => {
+export const getRequestParams = ({ query, headers }) => {
   const project = query.project ?? headers['expo-project']
   if (!project || typeof project !== 'string') {
     throw new Err.BadRequest('No expo-project header or project query provided.')

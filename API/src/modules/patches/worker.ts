@@ -1,19 +1,30 @@
-const { generatePatch, validatePatch, deletePatchFile } = require('../expo/patch')
-const { isLaunchBundleHealthy } = require('../expo/integrity')
+import type { AppLike, LoggerLike, PatchRecord, UnknownRecord, UploadRecord } from '../../types'
+import { generatePatch, validatePatch, deletePatchFile } from '../expo/patch'
+import { isLaunchBundleHealthy } from '../expo/integrity'
+import loggerDefault from '../logger'
+
 // Direct import (not via ../index) to avoid circular dep:
 // feathers.config → patches/worker → modules/index → feathers.config.
-const logger = require('../logger')
+const logger: LoggerLike = loggerDefault
 
 const TICK_INTERVAL_MS = 5000
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 const COOLDOWN_MS = 4 * 60 * 60 * 1000 // 4 hours
 const OBSOLETE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-let tickHandle = null
-let cleanupHandle = null
+let tickHandle: ReturnType<typeof setInterval> | null = null
+let cleanupHandle: ReturnType<typeof setInterval> | null = null
 let processing = false
 
-const claimNextPendingPatch = async (app) => {
+interface PatchWorkerRecord extends PatchRecord {
+  platform: string
+  fromUploadId: string
+  toUploadId: string
+  fromUpdateId: string
+  toUpdateId: string
+}
+
+const claimNextPendingPatch = async (app: AppLike): Promise<PatchWorkerRecord | null> => {
   const collection = app.service('patches').Model
   if (!collection) return null
   const now = new Date()
@@ -28,21 +39,21 @@ const claimNextPendingPatch = async (app) => {
     },
     { sort: { createdAt: 1 }, returnDocument: 'after' }
   )
-  return res?.value || null
+  return (res?.value as PatchWorkerRecord | undefined) || null
 }
 
-const logJob = async (app, fields) => {
+const logJob = async (app: AppLike, fields: UnknownRecord & { startedAt?: Date }) => {
   try {
     await app.service('patch-jobs').create({
       ...fields,
       startedAt: fields.startedAt || new Date()
     })
   } catch (e) {
-    logger.warn('patches.worker: failed to write job log', { error: e.message })
+    logger.warn('patches.worker: failed to write job log', { error: e instanceof Error ? e.message : String(e) })
   }
 }
 
-const markFailed = async (app, patch, errorMessage, jobType = 'generate', startedAt) => {
+const markFailed = async (app: AppLike, patch: PatchWorkerRecord, errorMessage: string, jobType = 'generate', startedAt?: Date) => {
   const now = new Date()
   await app.service('patches').patch(patch._id, {
     status: 'failed',
@@ -65,16 +76,17 @@ const markFailed = async (app, patch, errorMessage, jobType = 'generate', starte
   })
 }
 
-const processOnePatch = async (app, patchDoc) => {
+const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
   const generationStartedAt = new Date()
-  let fromUpload, toUpload
+  let fromUpload: UploadRecord
+  let toUpload: UploadRecord
   try {
-    [fromUpload, toUpload] = await Promise.all([
+    ;[fromUpload, toUpload] = await Promise.all([
       app.service('uploads').get(patchDoc.fromUploadId),
       app.service('uploads').get(patchDoc.toUploadId)
-    ])
+    ]) as [UploadRecord, UploadRecord]
   } catch (e) {
-    await markFailed(app, patchDoc, `upload lookup failed: ${e.message}`, 'generate', generationStartedAt)
+    await markFailed(app, patchDoc, `upload lookup failed: ${e instanceof Error ? e.message : String(e)}`, 'generate', generationStartedAt)
     return
   }
 
@@ -97,8 +109,8 @@ const processOnePatch = async (app, patchDoc) => {
   try {
     genResult = await generatePatch(fromUpload, toUpload, patchDoc.platform)
   } catch (e) {
-    logger.error('patches.worker: generation failed', { id: patchDoc._id, error: e.message })
-    await markFailed(app, patchDoc, `generation: ${e.message}`, 'generate', generationStartedAt)
+    logger.error('patches.worker: generation failed', { id: patchDoc._id, error: e instanceof Error ? e.message : String(e) })
+    await markFailed(app, patchDoc, `generation: ${e instanceof Error ? e.message : String(e)}`, 'generate', generationStartedAt)
     return
   }
 
@@ -134,7 +146,7 @@ const processOnePatch = async (app, patchDoc) => {
     })
   } catch (e) {
     deletePatchFile(genResult.path)
-    await markFailed(app, patchDoc, `validation crash: ${e.message}`, 'validate', validationStartedAt)
+    await markFailed(app, patchDoc, `validation crash: ${e instanceof Error ? e.message : String(e)}`, 'validate', validationStartedAt)
     return
   }
 
@@ -204,7 +216,7 @@ const processOnePatch = async (app, patchDoc) => {
   })
 }
 
-const tick = async (app) => {
+const tick = async (app: AppLike) => {
   if (processing) return
   processing = true
   try {
@@ -212,13 +224,13 @@ const tick = async (app) => {
     if (!patchDoc) return
     await processOnePatch(app, patchDoc)
   } catch (e) {
-    logger.error('patches.worker: tick crashed', { error: e.message })
+    logger.error('patches.worker: tick crashed', { error: e instanceof Error ? e.message : String(e) })
   } finally {
     processing = false
   }
 }
 
-const cleanupObsoletePatches = async (app) => {
+const cleanupObsoletePatches = async (app: AppLike) => {
   const collection = app.service('patches').Model
   if (!collection) return
   const cutoff = new Date(Date.now() - OBSOLETE_RETENTION_MS)
@@ -226,10 +238,10 @@ const cleanupObsoletePatches = async (app) => {
   try {
     cursor = collection.find({ markedObsoleteAt: { $lte: cutoff } })
   } catch (e) {
-    logger.warn('patches.worker.cleanup: query failed', { error: e.message })
+    logger.warn('patches.worker.cleanup: query failed', { error: e instanceof Error ? e.message : String(e) })
     return
   }
-  const docs = await cursor.toArray()
+  const docs = await cursor.toArray() as PatchWorkerRecord[]
   for (const doc of docs) {
     const startedAt = new Date()
     try {
@@ -249,20 +261,20 @@ const cleanupObsoletePatches = async (app) => {
         reason: 'obsolete-7d'
       })
     } catch (e) {
-      logger.warn('patches.worker.cleanup: failed to remove', { id: doc._id, error: e.message })
+      logger.warn('patches.worker.cleanup: failed to remove', { id: doc._id, error: e instanceof Error ? e.message : String(e) })
     }
   }
 }
 
-const cleanupTick = async (app) => {
+const cleanupTick = async (app: AppLike) => {
   try {
     await cleanupObsoletePatches(app)
   } catch (e) {
-    logger.error('patches.worker: cleanup crashed', { error: e.message })
+    logger.error('patches.worker: cleanup crashed', { error: e instanceof Error ? e.message : String(e) })
   }
 }
 
-const start = (app) => {
+export const start = (app: AppLike) => {
   if (tickHandle) return
   tickHandle = setInterval(() => tick(app), TICK_INTERVAL_MS)
   cleanupHandle = setInterval(() => cleanupTick(app), CLEANUP_INTERVAL_MS)
@@ -271,17 +283,9 @@ const start = (app) => {
   logger.info('patches.worker: started', { tickMs: TICK_INTERVAL_MS, cleanupMs: CLEANUP_INTERVAL_MS })
 }
 
-const stop = () => {
+export const stop = () => {
   if (tickHandle) { clearInterval(tickHandle); tickHandle = null }
   if (cleanupHandle) { clearInterval(cleanupHandle); cleanupHandle = null }
 }
 
-module.exports = {
-  start,
-  stop,
-  // exported for tests
-  tick,
-  cleanupObsoletePatches,
-  COOLDOWN_MS,
-  OBSOLETE_RETENTION_MS
-}
+export { tick, cleanupObsoletePatches, COOLDOWN_MS, OBSOLETE_RETENTION_MS }

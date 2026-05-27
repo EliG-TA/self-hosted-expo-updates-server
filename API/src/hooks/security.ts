@@ -1,17 +1,20 @@
-const Err = require('@feathersjs/errors')
-const { authenticate } = require('@feathersjs/authentication').hooks
+import type { HookContextLike } from '../types'
+import * as Err from '@feathersjs/errors'
+import { hooks } from '@feathersjs/authentication'
+
+const { authenticate } = hooks
 
 const security = {
-  isLocal: (context) => !context?.params?.provider,
+  isLocal: (context: HookContextLike) => !context?.params?.provider,
 
   defaultSecurity: () => [authenticate('jwt'), security.preventGlobalUpdates],
 
   // Prevent Method Execution
-  methodNotAllowed: (context) => {
+  methodNotAllowed: (context: HookContextLike) => {
     throw new Err.MethodNotAllowed('Method is not allowed')
   },
   // Only Admin can do broad patch / update / delete
-  preventGlobalUpdates: (context) => {
+  preventGlobalUpdates: (context: HookContextLike) => {
     if (security.isLocal(context)) return context
     if (context.method === 'find' || context.method === 'create' || context.method === 'get') return context
     if (!context.id) {
@@ -21,4 +24,4 @@ const security = {
   }
 }
 
-module.exports = security
+export default security

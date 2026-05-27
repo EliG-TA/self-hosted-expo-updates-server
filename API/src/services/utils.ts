@@ -1,12 +1,14 @@
-// @ts-nocheck
-const s = require('../hooks/security')
-const Err = require('@feathersjs/errors')
-const { generateSelfSigned } = require('../modules/expo/certs')
-const { getMetadataSync } = require('../modules/expo/helpers')
-const { getLaunchAssetPath, sumPatchesSize } = require('../modules/expo/patch')
-const { checkSingleIntegrity } = require('../modules/expo/integrity')
-const fs = require('fs')
-const path = require('path')
+import type { AppLike, UnknownRecord, UploadRecord } from '../types'
+
+import * as Err from '@feathersjs/errors'
+import * as fs from 'fs'
+import * as path from 'path'
+
+import s from '../hooks/security'
+import { generateSelfSigned } from '../modules/expo/certs'
+import { getMetadataSync } from '../modules/expo/helpers'
+import { getLaunchAssetPath, sumPatchesSize } from '../modules/expo/patch'
+import { checkSingleIntegrity } from '../modules/expo/integrity'
 
 const UPLOADS_ROOT = process.env.UPLOADS_ROOT || '/uploads'
 const UPDATES_ROOT = process.env.UPDATES_ROOT || '/updates'
@@ -30,18 +32,21 @@ const dirSizeRecursive = (dir) => {
 }
 
 class Service {
-  constructor (options) {
+  options: UnknownRecord
+  app: AppLike
+
+  constructor (options?: UnknownRecord) {
     this.options = options || {}
   }
 
-  setup (app) {
+  setup (app: AppLike) {
     this.app = app
   }
 
   async setRelease ({ uploadId }) {
     if (!uploadId) throw new Err.BadRequest('Missing uploadId or path')
 
-    const upload = await this.app.service('uploads').get(uploadId)
+    const upload = await this.app.service('uploads').get(uploadId) as UploadRecord
     if (!upload) throw new Err.NotFound('Upload not found')
 
     // Pre-flight: refuse to release/rollback an upload whose files are
@@ -58,7 +63,7 @@ class Service {
       )
     }
 
-    const uploads = await this.app.service('uploads').find({ query: { project: upload.project, version: upload.version, releaseChannel: upload.releaseChannel } })
+    const uploads = await this.app.service('uploads').find({ query: { project: upload.project, version: upload.version, releaseChannel: upload.releaseChannel } }) as UploadRecord[]
 
     await Promise.all(uploads.map(upd =>
       this.app.service('uploads').patch(upd._id, {
@@ -72,7 +77,7 @@ class Service {
   async deleteRelease ({ uploadId }) {
     if (!uploadId) throw new Err.BadRequest('Missing uploadId or path')
 
-    const upload = await this.app.service('uploads').get(uploadId)
+    const upload = await this.app.service('uploads').get(uploadId) as UploadRecord
     if (!upload) throw new Err.NotFound('Upload not found')
 
     // Per-file ops so callers (notably bulk cleanup) can tell apart "file
@@ -127,7 +132,7 @@ class Service {
   async scanOrphans ({ project }) {
     if (!project) throw new Err.BadRequest('Missing project')
 
-    const allUploads = await this.app.service('uploads').find({ query: {} })
+    const allUploads = await this.app.service('uploads').find({ query: {} }) as UploadRecord[]
     const knownZips = new Set(allUploads.map(u => u.filename).filter(Boolean))
     const knownPaths = new Set(allUploads.map(u => u.path).filter(Boolean))
 
@@ -225,8 +230,8 @@ class Service {
     if (!project && !uploadId) throw new Err.BadRequest('Missing project or uploadId')
 
     const uploads = uploadId
-      ? [await this.app.service('uploads').get(uploadId)]
-      : await this.app.service('uploads').find({ query: { project } })
+      ? [await this.app.service('uploads').get(uploadId) as UploadRecord]
+      : await this.app.service('uploads').find({ query: { project } }) as UploadRecord[]
 
     const problems = []
     const categoryCounts = {}
@@ -285,7 +290,7 @@ class Service {
     const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000)
     const cleanable = await this.app.service('uploads').find({
       query: { project, status: { $ne: 'released' } }
-    })
+    }) as UploadRecord[]
 
     const candidates = []
     let totalBytes = 0
@@ -302,7 +307,10 @@ class Service {
         const activeNow = await this.app.service('clients').find({
           query: { currentUpdate: up.updateId, $limit: 1 }
         })
-        const stillActive = (activeNow?.data || activeNow || []).length > 0
+        const activeRows = Array.isArray(activeNow)
+          ? activeNow
+          : ((activeNow as { data?: unknown[] })?.data || [])
+        const stillActive = activeRows.length > 0
         if (stillActive) continue
       }
 
@@ -370,7 +378,7 @@ class Service {
     const uploadId = query?.uploadId
     if (!uploadId) throw new Err.BadRequest('Missing uploadId')
 
-    const upload = await this.app.service('uploads').get(uploadId)
+    const upload = await this.app.service('uploads').get(uploadId) as UploadRecord
     if (!upload) throw new Err.NotFound('Upload not found')
 
     // Prefer the real on-disk size — `upload.size` in Mongo is captured at
@@ -413,8 +421,8 @@ class Service {
 
       // Assets are mostly shared across platforms (MD5-keyed by content).
       // Dedupe by path so the same file doesn't get counted twice.
-      const iosPaths = new Set((metadata.fileMetadata.ios?.assets || []).map(a => a.path))
-      const androidPaths = new Set((metadata.fileMetadata.android?.assets || []).map(a => a.path))
+      const iosPaths = new Set<string>((metadata.fileMetadata.ios?.assets || []).map(a => a.path))
+      const androidPaths = new Set<string>((metadata.fileMetadata.android?.assets || []).map(a => a.path))
       const allPaths = new Set([...iosPaths, ...androidPaths])
 
       result.assetsCount = allPaths.size
@@ -452,7 +460,7 @@ class Service {
   }
 }
 
-module.exports = {
+export default {
   name: 'utils',
   createService: (options) => new Service(options),
   hooks: {
@@ -477,4 +485,4 @@ module.exports = {
   }
 }
 
-module.exports.Service = Service
+export { Service }

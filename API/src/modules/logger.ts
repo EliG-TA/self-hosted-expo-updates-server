@@ -1,4 +1,4 @@
-const pino = require('pino')
+import pino from 'pino'
 
 const prettyPino = {
   transport: {
@@ -17,13 +17,13 @@ const logger = process.env.NODE_ENV === 'production' ? pino() : pino(prettyPino)
 // as fields on the log record instead of being coerced into the message.
 const pinoLogger = {
   ...logger,
-  info: (source, info) => info ? logger.info(info, source) : logger.info(source),
-  warn: (source, info) => info ? logger.warn(info, source) : logger.warn(source),
-  error: (source, info) => info ? logger.error(info, source) : logger.error(source),
-  debug: (source, info) => info ? logger.debug(info, source) : logger.debug(source)
+  info: (source: unknown, info?: unknown) => info ? logger.info(info, String(source)) : logger.info(source),
+  warn: (source: unknown, info?: unknown) => info ? logger.warn(info, String(source)) : logger.warn(source),
+  error: (source: unknown, info?: unknown) => info ? logger.error(info, String(source)) : logger.error(source),
+  debug: (source: unknown, info?: unknown) => info ? logger.debug(info, String(source)) : logger.debug(source)
 }
 
 process.on('unhandledRejection', (reason, p) =>
   pinoLogger.error('API - Unhandled Rejection at: Promise ', { promise: p, reason }))
 
-module.exports = pinoLogger
+export default pinoLogger

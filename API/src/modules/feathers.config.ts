@@ -1,11 +1,25 @@
-const configuration = require('@feathersjs/configuration')
-const socketio = require('@feathersjs/socketio')
+import type { AppLike, LoggerLike, UnknownRecord } from '../types'
+import configuration from '@feathersjs/configuration'
+import socketio from '@feathersjs/socketio'
+import expressconfig from './express.config'
+import type { ExpressLike } from './express.config'
+import loggerDefault from './logger'
+import * as patchesWorker from './patches/worker'
+import mongodb from './mongodb'
+import services from '../services'
+import channels from './channels'
+import appHooks from '../hooks/app'
 
-const expressconfig = require('./express.config')
-const logger = require('./logger')
-const patchesWorker = require('./patches/worker')
+const logger: LoggerLike = loggerDefault
 
-module.exports = (express) => (app) => {
+export type FeathersExpressLike = ExpressLike & {
+  (...args: unknown[]): AppLike & { configure(service: unknown): void; hooks(hooks: unknown): void; use(...args: unknown[]): void; listen(port: unknown): Promise<unknown> }
+  rest(): unknown
+  notFound(): unknown
+  errorHandler(options: UnknownRecord): unknown
+}
+
+export default (express: FeathersExpressLike) => (app: AppLike & { configure(service: unknown): void; hooks(hooks: unknown): void; use(...args: unknown[]): void }) => {
   // Load Feathers configuration
   app.configure(configuration())
 
@@ -17,14 +31,14 @@ module.exports = (express) => (app) => {
   app.configure(socketio({ cookie: false }))
 
   // Database Adapter
-  app.configure(require('./mongodb'))
+  app.configure(mongodb)
 
   // SConfiguring Services
-  app.configure(require('../services'))
+  app.configure(services)
 
   // Setting up Feathres Services and Hooks
-  app.configure(require('./channels'))
-  app.hooks(require('../hooks/app'))
+  app.configure(channels)
+  app.hooks(appHooks)
 
   // Configure a middleware for 404s and the error handler
   app.use(express.notFound())

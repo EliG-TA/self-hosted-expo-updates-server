@@ -1,8 +1,10 @@
-const fs = require('fs')
-const path = require('path')
-const s = require('../hooks/security')
-const { logger } = require('../modules')
-const { PATCH_DIR_NAME } = require('../modules/expo/patch')
+import type { AppLike, UnknownRecord } from '../types'
+import s from '../hooks/security'
+
+import * as fs from 'fs'
+import * as path from 'path'
+import { logger } from '../modules'
+import { PATCH_DIR_NAME } from '../modules/expo/patch'
 
 const CACHE_TTL_MS = 10 * 1000
 const UPDATES_ROOT = process.env.UPDATES_ROOT || '/updates'
@@ -98,10 +100,10 @@ const computeSizes = () => {
 }
 
 class Service {
-  options: any
-  app: any
-  constructor (options) { this.options = options || {} }
-  setup (app) { this.app = app }
+  options: UnknownRecord
+  app: AppLike
+  constructor (options?: UnknownRecord) { this.options = options || {} }
+  setup (app: AppLike) { this.app = app }
 
   async find () { return this.get() }
 
@@ -114,9 +116,9 @@ class Service {
   }
 }
 
-module.exports = {
+export default {
   name: 'disk-usage',
-  createService: (options) => new Service(options),
+  createService: (options?: UnknownRecord) => new Service(options),
   hooks: {
     before: {
       all: s.defaultSecurity(),

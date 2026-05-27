@@ -1,7 +1,9 @@
-const s = require('../hooks/security')
-const { hashPassword, protect } = require('@feathersjs/authentication-local').hooks
+import s from '../hooks/security'
+import { hooks } from '@feathersjs/authentication-local'
 
-module.exports = {
+const { hashPassword, protect } = hooks
+
+export default {
   name: 'users',
   hooks: {
     before: {

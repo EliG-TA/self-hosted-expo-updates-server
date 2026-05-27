@@ -1,7 +1,8 @@
-const { MongoClient } = require('mongodb')
+import type { AppLike } from '../types'
+import { MongoClient } from 'mongodb'
 
-module.exports = function (app) {
-  const connection = app.get('mongodb')
+export default function mongodb (app: AppLike) {
+  const connection = String(app.get('mongodb'))
   const dbNameEndIndex = connection.includes('?') ? connection.indexOf('?') : connection.length
   const database = connection.substring(connection.lastIndexOf('/') + 1, dbNameEndIndex)
 

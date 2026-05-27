@@ -1,10 +1,13 @@
-const Err = require('@feathersjs/errors')
-const path = require('path')
-const fs = require('fs')
-const logger = require('../logger')
-const { COOLDOWN_MS } = require('../patches/worker')
-const { getLaunchAssetPath } = require('./patch')
-const { isLaunchBundleHealthy } = require('./integrity')
+import * as Err from '@feathersjs/errors'
+import * as path from 'path'
+import * as fs from 'fs'
+import type { AppLike, LoggerLike, UnknownRecord, UploadRecord } from '../../types'
+import { COOLDOWN_MS } from '../patches/worker'
+import { getLaunchAssetPath } from './patch'
+import { isLaunchBundleHealthy } from './integrity'
+
+import loggerDefault from '../logger'
+const logger: LoggerLike = loggerDefault
 
 const PATCH_TERMINAL_NOT_BENEFICIAL = 'not-beneficial'
 const PATCH_TERMINAL_READY = 'ready'
@@ -235,7 +238,7 @@ const tryHandlePatch = async (app, { query, headers }, fallback) => {
   return fallback
 }
 
-const handleAssetData = async (app, { query, headers }) => {
+export const handleAssetData = async (app, { query, headers }) => {
   const { asset, contentType } = query
   if (!asset || !contentType) {
     throw new Err.BadRequest('No asset or contentType provided.')
@@ -260,7 +263,7 @@ const handleAssetData = async (app, { query, headers }) => {
   }
 }
 
-const handleAssetResponse = (res) => {
+export const handleAssetResponse = (res) => {
   if (res.data.type === 'patch') {
     const patchBuf = fs.readFileSync(res.data.path, null)
     res.status(226)
@@ -275,7 +278,7 @@ const handleAssetResponse = (res) => {
   res.end(asset)
 }
 
-const getJSONInfo = ({ path: paramPath }) => {
+export const getJSONInfo = ({ path: paramPath }) => {
   if (!paramPath) throw new Err.BadRequest('Missing path parameter')
 
   const appJsonPath = path.resolve(`${paramPath}/app.json`)
@@ -294,9 +297,4 @@ const getJSONInfo = ({ path: paramPath }) => {
   }
 }
 
-module.exports = {
-  handleAssetData,
-  handleAssetResponse,
-  getJSONInfo,
-  decidePatchAction // exported for tests
-}
+export { decidePatchAction }

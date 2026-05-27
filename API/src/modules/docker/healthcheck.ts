@@ -1,4 +1,4 @@
-const http = require('http')
+import * as http from 'http'
 
 const options = {
   host: 'localhost',
@@ -10,7 +10,7 @@ const options = {
 
 let data = ''
 
-const exit = (success, message) => {
+const exit = (success: boolean, message?: string) => {
   message && console[success ? 'log' : 'error'](message)
   process.exit(success ? 0 : 1)
 }
@@ -24,7 +24,7 @@ const parseData = () => {
   }
 }
 
-const getData = (response) => {
+const getData = (response: http.IncomingMessage) => {
   if (response.statusCode !== 200) exit(false, `Bad health check, result ${response.statusCode}`)
   response.on('data', chunk => { data += chunk })
   response.on('end', parseData)

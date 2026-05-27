@@ -1,15 +1,24 @@
-// @ts-nocheck
-const { MongoDBService } = require('@feathersjs/mongodb')
-const s = require('../hooks/security')
-const error = require('../hooks/error')
-const { logger } = require('../modules')
+import type { Db } from 'mongodb'
+import type { MongoDBAdapterOptions } from '@feathersjs/mongodb'
+import type { AppLike, HookContextLike, UnknownRecord } from '../types'
+
+import { MongoDBService } from '@feathersjs/mongodb'
+import error from '../hooks/error'
+import s from '../hooks/security'
+import { logger } from '../modules'
 
 const TTL_SECONDS = 30 * 24 * 60 * 60 // 30 days
 
 class PatchJobsService extends MongoDBService {
-  setup (app, path) {
+  app: AppLike
+
+  constructor (options?: Partial<MongoDBAdapterOptions>) {
+    super({ Model: undefined, ...options })
+  }
+
+  setup (app: AppLike, path: string) {
     this.app = app
-    app.get('mongoClient').then(async (db) => {
+    ;(app.get('mongoClient') as Promise<Db>).then(async (db) => {
       const collection = db.collection('patch-jobs')
       this.options.Model = collection
       try {
@@ -20,20 +29,20 @@ class PatchJobsService extends MongoDBService {
         await collection.createIndex({ project: 1, startedAt: -1 })
         await collection.createIndex({ patchId: 1 })
       } catch (e) {
-        logger.warn('patch-jobs: failed to create indexes', { error: e.message })
+        logger.warn('patch-jobs: failed to create indexes', { error: e instanceof Error ? e.message : String(e) })
       }
     })
   }
 }
 
-const createService = (defaultOptions) => new PatchJobsService(defaultOptions)
+const createService = (defaultOptions?: Partial<MongoDBAdapterOptions>) => new PatchJobsService(defaultOptions)
 
-const broadcastJob = (context) => {
+const broadcastJob = (context: HookContextLike) => {
   context.app.service('messages').create({ action: 'update', keys: ['patchJobs'] })
   return context
 }
 
-module.exports = {
+export default {
   name: 'patch-jobs',
   createService,
   hooks: {

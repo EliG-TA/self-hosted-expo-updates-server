@@ -1,8 +1,10 @@
-const FormData = require('form-data')
-const { serializeDictionary } = require('structured-headers')
-const Err = require('@feathersjs/errors')
-const { getRequestParams } = require('./request')
-const { getMetadataSync, getAssetMetadataSync, signRSASHA256, convertToDictionaryItemsRepresentation } = require('./helpers')
+import FormData from 'form-data'
+import * as Err from '@feathersjs/errors'
+import { serializeDictionary } from 'structured-headers'
+import type { AppLike, UnknownRecord, UploadRecord } from '../../types'
+import { getRequestParams } from './request'
+import { getMetadataSync, getAssetMetadataSync, signRSASHA256, convertToDictionaryItemsRepresentation } from './helpers'
+
 
 const getSignature = async ({ headers, manifest, privateKey }) => {
   const expectSignatureHeader = !!headers['expo-expect-signature']
@@ -20,7 +22,7 @@ const getSignature = async ({ headers, manifest, privateKey }) => {
   return ({ 'expo-signature': serializeDictionary(dictionary) })
 }
 
-module.exports.hanldeManifestData = async (app, { query, headers }) => {
+export const hanldeManifestData = async (app, { query, headers }) => {
   const {
     project,
     platform,
@@ -97,7 +99,7 @@ module.exports.hanldeManifestData = async (app, { query, headers }) => {
   }
 }
 
-module.exports.handleManifestResponse = (res, protocolVersion) => {
+export const handleManifestResponse = (res, protocolVersion) => {
   res.set('expo-protocol-version', protocolVersion ?? 0)
   res.set('expo-sfv-version', 0)
   res.set('cache-control', 'private, max-age=0')

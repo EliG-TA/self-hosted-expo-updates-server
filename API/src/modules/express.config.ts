@@ -1,13 +1,22 @@
-const path = require('path')
+import type { AppLike, UnknownRecord } from '../types'
+import * as path from 'path'
 
-const favicon = require('serve-favicon')
-const compress = require('compression')
-const helmet = require('helmet')
-const cors = require('cors')
+import favicon from 'serve-favicon'
+import compress from 'compression'
+import helmetModule from 'helmet'
+import cors from 'cors'
 
-const addWebhookRawBody = (req, res, buf) => { req.url && req.url === '/webhooks' && (req.rawBody = buf) }
+const helmet = helmetModule
 
-module.exports = (express) => (app) => {
+const addWebhookRawBody = (req: { url?: string; rawBody?: Buffer }, res: unknown, buf: Buffer) => { req.url && req.url === '/webhooks' && (req.rawBody = buf) }
+
+export interface ExpressLike {
+  json(options: UnknownRecord): unknown
+  urlencoded(options: UnknownRecord): unknown
+  static(path: string): unknown
+}
+
+export default (express: ExpressLike) => (app: AppLike & { use(...args: unknown[]): void }) => {
   app.use(helmet({ contentSecurityPolicy: false }))
   app.use(cors())
   app.use(compress())
