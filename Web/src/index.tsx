@@ -2,21 +2,30 @@ import 'primereact/resources/themes/md-dark-indigo/theme.css'
 import 'primereact/resources/primereact.min.css'
 import 'primeicons/primeicons.css'
 
-import React, { useState } from 'react'
-import ReactDOM from 'react-dom'
+import React, {PropsWithChildren, useState} from 'react'
+import { createRoot } from 'react-dom/client'
 import { Background } from './Components/Layout/Background'
 import { Notifications } from './Components/Layout/Notifications'
 import state, { jwtLogin } from './State'
 import { Spinner, TopMenu } from './Components'
 import { useMount } from 'react-use'
-import { FC } from './Services'
+import { FC, queryClient } from './Services'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Home from './Pages/Home'
 import Login from './Pages/Login'
 import NewApp from './Pages/NewApp'
 import AppPage from './Pages/App'
 import useForceUpdate from 'use-force-update'
-import { ReactQueryDevtools } from 'react-query-devtools'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+
+const RootContainer: React.FC<PropsWithChildren> = ({children}) => (
+  <QueryClientProvider client={queryClient}>
+    <BrowserRouter>
+      {children}
+    </BrowserRouter>
+  </QueryClientProvider>
+)
 
 function App () {
   const forceUpdate = useForceUpdate()
@@ -29,7 +38,7 @@ function App () {
 
   if (isLoading) return <Spinner />
   return (
-    <BrowserRouter>
+    <RootContainer>
       <ReactQueryDevtools initialIsOpen={false} />
 
       <Background>
@@ -54,8 +63,8 @@ function App () {
               </Routes>)}
         </div>
       </Background>
-    </BrowserRouter>
+    </RootContainer>
   )
 }
 
-ReactDOM.render(<React.StrictMode><App /></React.StrictMode>, document.getElementById('root'))
+createRoot(document.getElementById('root')).render(<React.StrictMode><App /></React.StrictMode>)

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useCapsule, isObject, localStorage } from './Functions'
 import _ from 'lodash'
 

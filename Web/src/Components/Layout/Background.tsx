@@ -1,8 +1,8 @@
 import React from 'react'
 import { background } from '../../Resources'
 
-function Background ({ children }) {
-  const backgroundStyle = {
+function Background ({ children }: any) {
+  const backgroundStyle: any = {
     position: 'absolute',
     top: 0,
     bottom: 0,

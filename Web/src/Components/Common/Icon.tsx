@@ -36,7 +36,7 @@ library.add(
   faBook
 )
 
-export function Icon ({ name, size, style, color, ...props }) {
+export function Icon ({ name, size, style, color, ...props }: any) {
   return (
     <FontAwesomeIcon {...props} icon={name} style={{ fontSize: size || 36, color, ...style }} />
   )

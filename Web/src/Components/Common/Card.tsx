@@ -5,11 +5,11 @@ import { Colors } from './Colors'
 
 const transition = { default: { duration: 0.4 } }
 
-export function Card ({ fadeIn, collapsable, title, titleCollapsed, titleStyle, collapsed, children, style, customHeader, onExpand, onToggle }) {
+export function Card ({ fadeIn, collapsable, title, titleCollapsed, titleStyle, collapsed, children, style, customHeader, onExpand, onToggle }: any) {
   const [state, setState] = useState('closed')
   const isCollapsed = state === 'closed'
 
-  const toggleCollapse = (newState) => {
+  const toggleCollapse = (newState?: any) => {
     const applyNewState = newState || (isCollapsed ? 'open' : 'closed')
     setState(applyNewState)
     applyNewState === 'open' && onExpand && onExpand()

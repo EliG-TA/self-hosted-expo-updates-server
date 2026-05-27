@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from 'react'
 import { Flex, Card, Spinner, Button, Text, Colors, StatusPill } from '../../Components'
 import { DataTable } from 'primereact/datatable'

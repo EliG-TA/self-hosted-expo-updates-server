@@ -1,7 +1,7 @@
 import React from 'react'
 import { Colors } from './Colors'
 
-export const Text = ({ style, bold, italic, size, color, center, upCase, value, title }) => (
+export const Text = ({ style, bold, italic, size, color, center, upCase, value, title }: any) => (
   <div
     style={{
       fontWeight: bold ? 'bold' : 'normal',

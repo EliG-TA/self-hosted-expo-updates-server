@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Flex, Input, Text, Button, Spinner, Colors } from '../../Components'
 import { TabView, TabPanel } from 'primereact/tabview'
 import { DataTable } from 'primereact/datatable'

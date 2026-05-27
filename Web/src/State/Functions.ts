@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react'
 import { omit } from 'lodash'
 import useForceUpdate from 'use-force-update'

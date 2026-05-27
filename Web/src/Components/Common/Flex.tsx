@@ -1,6 +1,6 @@
 import React from 'react'
 
-export function Flex ({ style, row, children, js, jb, je, jse, flexrow, as, ae, width, height, fw, fh, bg, wrap, black, ...props }) {
+export function Flex ({ style, row, children, js, jb, je, jse, flexrow, as, ae, width, height, fw, fh, bg, wrap, black, ...props }: any) {
   return (
     <div
       style={{

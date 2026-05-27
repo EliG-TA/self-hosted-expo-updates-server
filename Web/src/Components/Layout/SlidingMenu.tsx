@@ -8,7 +8,7 @@ import { motion } from 'framer-motion'
 const modalMenu = document.getElementById('modal-menu')
 const modalDiv = document.createElement('div')
 
-const MENU = {
+const MENU: any = {
   accent: Colors.primary,
   base: 'transparent',
   background: 'rgba(17, 25, 40, 0.5)',
@@ -28,7 +28,7 @@ export const HamburgerMenu = () => {
   )
 }
 
-const MenuItem = ({ item: { label, icon, path }, action }) => (
+const MenuItem = ({ item: { label, icon, path }, action }: any) => (
   <motion.div
     onTap={action} style={Styles.menuElement}
     whileHover='hovered' transition={{ default: { duration: 0.3 } }}
@@ -41,11 +41,11 @@ const MenuItem = ({ item: { label, icon, path }, action }) => (
   </motion.div>
 )
 
-export const SlidingMenu = ({ menuItems, menuAction }) => {
+export const SlidingMenu = ({ menuItems, menuAction }: any) => {
   const [visibility, setVisibility] = useState(0)
 
-  useMount(() => { modalMenu.appendChild(modalDiv); MENU.toggle = setVisibility })
-  useUnmount(() => { modalMenu.removeChild(modalDiv); MENU.toggle = null })
+  useMount(() => { modalMenu?.appendChild(modalDiv); MENU.toggle = setVisibility })
+  useUnmount(() => { modalMenu?.removeChild(modalDiv); MENU.toggle = null })
 
   const renderMenu = () => {
     return (
@@ -59,15 +59,15 @@ export const SlidingMenu = ({ menuItems, menuAction }) => {
         transition={{ ease: 'easeOut', duration: 0.5 }}
         style={Styles.menuContainer}
       >
-        {menuItems.map(({ path, external, ...item }, ind) => <MenuItem key={ind} item={item} action={() => { menuAction(path, external); setVisibility(0) }} />)}
+        {menuItems.map(({ path, external, ...item }: any, ind: number) => <MenuItem key={ind} item={item} action={() => { menuAction(path, external); setVisibility(0) }} />)}
       </motion.div>
     )
   }
 
-  return ReactDOM.createPortal(renderMenu(), modalMenu)
+  return modalMenu ? ReactDOM.createPortal(renderMenu(), modalMenu) : null
 }
 
-const Styles = {
+const Styles: any = {
   menuContainer: {
     position: 'absolute',
     top: 50,

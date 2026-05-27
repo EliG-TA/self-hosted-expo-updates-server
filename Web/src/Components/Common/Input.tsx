@@ -13,7 +13,7 @@ export const Input = ({
   setRef, setValue, useState, onChange, onEnter,
   autofocus, password, date, label, multiline, dropdown,
   autoComplete, error, ...props
-}) => {
+}: any) => {
   const inputRef = useRef(null)
   setRef && setRef(inputRef)
   props.ref = inputRef
@@ -110,7 +110,7 @@ export const Input = ({
   return <InputText {...props} />
 }
 
-const extractStyle = (props) => {
+const extractStyle = (props: any) => {
   const { width, height, marginTop, marginBottom, marginLeft, marginRight, ...otherStyles } = props.style
   props.style = otherStyles
   return { width, height, marginTop, marginBottom, marginLeft, marginRight }

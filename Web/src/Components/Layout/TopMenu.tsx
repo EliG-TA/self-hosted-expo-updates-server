@@ -7,7 +7,7 @@ import { useCQuery } from '../../Services'
 import menuItems from './MenuItems'
 import { useLocation, useNavigate } from 'react-router-dom'
 
-const formatBytes = (n) => {
+const formatBytes = (n: any) => {
   if (!n) return '0 B'
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
@@ -52,12 +52,12 @@ const DiskUsageChip = () => {
   )
 }
 
-export function TopMenu ({ licenses, history }) {
+export function TopMenu ({ licenses, history }: any) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { label: currentPage } = menuItems?.find(item => pathname?.includes(item.path)) || { label: '' }
 
-  const menuAction = (page, external) => {
+  const menuAction = (page: any, external: any) => {
     if (page === 'Logout') return doLogout()
     console.log(page, external)
     if (external) return window.open(page, '_blank')
@@ -85,7 +85,7 @@ export function TopMenu ({ licenses, history }) {
   )
 }
 
-const styles = {
+const styles: any = {
   chip: {
     padding: '4px 10px',
     borderRadius: 6,

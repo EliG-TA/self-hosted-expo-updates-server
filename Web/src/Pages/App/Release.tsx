@@ -5,7 +5,7 @@ import { FC, invalidateQuery } from '../../Services'
 import { UpdateInfo } from './UpdateInfo'
 import { Flex, Button, Text, Spinner } from '../../Components'
 
-export const Release = ({ update, onHide }) => {
+export const Release = ({ update, onHide }: any) => {
   const [releasing, setRelasing] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)

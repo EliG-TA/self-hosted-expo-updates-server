@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 
 import { Colors, Icon, Text } from '..'
 
-export function Button ({ round, disabled, icon, label, onClick, style, iconStyle, width, hidden, danger }) {
+export function Button ({ round, disabled, icon, label, onClick, style, iconStyle, width, hidden, danger }: any) {
   const bg = danger ? Colors.danger : Colors.primary
   const fg = danger ? Colors.textOnDanger : Colors.textOnPrimary
   const iconFg = danger ? Colors.iconOnDanger : Colors.iconOnPrimary
