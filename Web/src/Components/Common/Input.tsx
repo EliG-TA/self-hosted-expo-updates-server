@@ -1,20 +1,20 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import type { CSSProperties, RefObject } from 'react'
-import { Password } from 'primereact/password'
-import type { PasswordProps } from 'primereact/password'
-import { InputText } from 'primereact/inputtext'
-import type { InputTextProps } from 'primereact/inputtext'
-import { InputTextarea } from 'primereact/inputtextarea'
-import type { InputTextareaProps } from 'primereact/inputtextarea'
-import { Calendar } from 'primereact/calendar'
-import type { CalendarProps } from 'primereact/calendar'
-import { Dropdown } from 'primereact/dropdown'
-import type { DropdownProps } from 'primereact/dropdown'
-import { locale, addLocale } from 'primereact/api'
 import moment from 'moment'
+import { addLocale, locale } from 'primereact/api'
+import type { CalendarProps } from 'primereact/calendar'
+import { Calendar } from 'primereact/calendar'
+import type { DropdownProps } from 'primereact/dropdown'
+import { Dropdown } from 'primereact/dropdown'
+import type { InputTextProps } from 'primereact/inputtext'
+import { InputText } from 'primereact/inputtext'
+import type { InputTextareaProps } from 'primereact/inputtextarea'
+import { InputTextarea } from 'primereact/inputtextarea'
+import type { PasswordProps } from 'primereact/password'
+import { Password } from 'primereact/password'
 
-import { Flex, Text, Colors } from '..'
 import type { InputProps } from '../../types'
+import { Colors, Flex, Text } from '..'
 
 type MutableInputProps = InputProps & {
   ref?: RefObject<unknown>
@@ -36,21 +36,33 @@ type MutableInputProps = InputProps & {
 type PrimeInputProps = Partial<PasswordProps & InputTextProps & InputTextareaProps & CalendarProps & DropdownProps>
 
 export const Input = ({
-  setRef, setValue, useState, onChange, onEnter,
-  autofocus, password, date, label, multiline, dropdown,
-  autoComplete, error, ...restProps
+  setRef,
+  setValue,
+  useState,
+  onChange,
+  onEnter,
+  autofocus,
+  password,
+  date,
+  label,
+  multiline,
+  dropdown,
+  autoComplete,
+  error,
+  ...restProps
 }: InputProps) => {
   const inputRef = useRef(null)
   setRef && setRef(inputRef)
   const props = restProps as MutableInputProps
   props.ref = inputRef
   useEffect(() => {
-    autofocus && setTimeout(() => {
-      if (!inputRef || !inputRef.current) return false
-      const current = inputRef.current as { element?: { focus: () => void }; inputEl?: { focus: () => void } } | null
-      current?.element?.focus()
-      current?.inputEl?.focus()
-    }, 500)
+    autofocus &&
+      setTimeout(() => {
+        if (!inputRef || !inputRef.current) return false
+        const current = inputRef.current as { element?: { focus: () => void }; inputEl?: { focus: () => void } } | null
+        current?.element?.focus()
+        current?.inputEl?.focus()
+      }, 500)
   }, [autofocus])
 
   error && (props.className = 'invalid-input')
@@ -64,11 +76,13 @@ export const Input = ({
   setValue && (props.onChange = (e) => setValue(String(e.target.value ?? '')))
   onChange && (props.onChange = (e) => onChange({ [e.target.id || 'value']: e.target.value }))
   onEnter && (props.onKeyDown = (key) => key.keyCode === 13 && onEnter())
-  useState && onChange && (props.onChange = (e) => {
-    const value = String(e.target.value ?? '')
-    useState[1](value)
-    onChange(value)
-  })
+  useState &&
+    onChange &&
+    (props.onChange = (e) => {
+      const value = String(e.target.value ?? '')
+      useState[1](value)
+      onChange(value)
+    })
 
   props.autoComplete = autoComplete || 'off'
 
@@ -79,7 +93,7 @@ export const Input = ({
     backgroundColor: Colors.secondary,
     border: '1px solid rgba(255,255,255,.125)',
     color: Colors.inputText,
-    ...props.style
+    ...props.style,
   }
 
   if (password) {
@@ -100,7 +114,7 @@ export const Input = ({
     props.inputStyle = {
       paddingLeft: 12,
       borderRadius: 20,
-      border: 'none'
+      border: 'none',
     }
     const containerStyle = extractStyle(props)
     props.style.width = props.style.textWidth || '50%'
@@ -108,7 +122,7 @@ export const Input = ({
     props.style.marginLeft = 5
     return (
       <Flex row js style={{ backgroundColor: 'rgba(30,37,47)', paddingLeft: 12, borderRadius: 20, ...containerStyle }}>
-        <Text value={label} color='white' />
+        <Text value={label} color="white" />
         <Calendar {...toPrimeProps(props)} value={new Date(String(props.value))} />
       </Flex>
     )
@@ -130,7 +144,7 @@ export const Input = ({
     props.style.marginLeft = 5
     return (
       <Flex row js style={{ backgroundColor: 'rgba(30,37,47)', paddingLeft: 12, borderRadius: 20, ...containerStyle }}>
-        <Text value={label} color='white' />
+        <Text value={label} color="white" />
         <InputText {...toPrimeProps(props)} />
       </Flex>
     )
@@ -164,9 +178,8 @@ addLocale('it', {
     'Settembre',
     'Ottobre',
     'Novembre',
-    'Dicembre'
+    'Dicembre',
   ],
-  monthNamesShort: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic']
-}
-)
+  monthNamesShort: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'],
+})
 locale('it')

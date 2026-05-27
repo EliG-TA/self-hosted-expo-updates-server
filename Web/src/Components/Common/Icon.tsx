@@ -1,26 +1,25 @@
 import React from 'react'
 import type { CSSProperties } from 'react'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { FontAwesomeIconProps } from '@fortawesome/react-fontawesome'
-import { library } from '@fortawesome/fontawesome-svg-core'
 import type { IconProp } from '@fortawesome/fontawesome-svg-core'
-
+import { library } from '@fortawesome/fontawesome-svg-core'
 import {
+  faBan,
+  faBars,
+  faBook,
+  faCheck,
+  faChevronUp,
+  faDownload,
   faHome,
   faPlus,
   faSignInAlt,
   faSignOutAlt,
-  faBars,
-  faChevronUp,
-  faUpload,
-  faDownload,
-  faCheck,
-  faBan,
-  faWrench,
-  faTrash,
   faSync,
-  faBook
+  faTrash,
+  faUpload,
+  faWrench,
 } from '@fortawesome/free-solid-svg-icons'
+import type { FontAwesomeIconProps } from '@fortawesome/react-fontawesome'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 
 library.add(
   faHome,
@@ -36,7 +35,7 @@ library.add(
   faWrench,
   faTrash,
   faSync,
-  faBook
+  faBook,
 )
 
 interface IconProps extends Omit<FontAwesomeIconProps, 'icon' | 'style' | 'color' | 'name' | 'size'> {
@@ -46,8 +45,6 @@ interface IconProps extends Omit<FontAwesomeIconProps, 'icon' | 'style' | 'color
   color?: string
 }
 
-export function Icon ({ name, size, style, color, ...props }: IconProps) {
-  return (
-    <FontAwesomeIcon {...props} icon={name as IconProp} style={{ fontSize: size || 36, color, ...style }} />
-  )
+export function Icon({ name, size, style, color, ...props }: IconProps) {
+  return <FontAwesomeIcon {...props} icon={name as IconProp} style={{ fontSize: size || 36, color, ...style }} />
 }

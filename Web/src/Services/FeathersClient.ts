@@ -1,10 +1,11 @@
+import authClient, { MemoryStorage } from '@feathersjs/authentication-client'
 import { feathers } from '@feathersjs/feathers'
 import socketio from '@feathersjs/socketio-client'
-import authClient, { MemoryStorage } from '@feathersjs/authentication-client'
-import { io } from 'socket.io-client'
 import type { Socket } from 'socket.io-client'
-import { invalidateQuery } from './QueryCache'
+import { io } from 'socket.io-client'
+
 import type { QueryKeyValue, UnknownRecord } from '../types'
+import { invalidateQuery } from './QueryCache'
 
 /* ============================== Environment Setup ================================================== */
 const isDev = !window?._env_?.ENVIRONMENT || window?._env_?.ENVIRONMENT === 'development'
@@ -55,7 +56,7 @@ const FC = {
     FC.isDev && console.log(`Socket ${event} to ${serverUrl}`)
     FC.online = event === 'connect'
   },
-  server: serverUrl
+  server: serverUrl,
 } as FeathersClientState
 
 FC.client.configure(socketio(FC.socket, { timeout: 30000 }))
@@ -68,7 +69,7 @@ FC.socket.on('disconnect', FC.connectionHandler('disconnect'))
 
 FC.login = async (credentials) => {
   try {
-    const user = await FC.client.authenticate(credentials) as AuthResult
+    const user = (await FC.client.authenticate(credentials)) as AuthResult
     FC.authenticated = !!user.accessToken
     return user
   } catch (details) {
@@ -79,7 +80,9 @@ FC.login = async (credentials) => {
 }
 
 FC.logout = () => {
-  try { FC.client.logout() } catch (e) {}
+  try {
+    FC.client.logout()
+  } catch (e) {}
 }
 
 FC.services = FC.client.services
@@ -90,7 +93,10 @@ FC.isReady = () => FC.online && FC.authenticated
 // Channel Updates
 FC.updateCache = (keys) => FC.service('messages').create({ action: 'update', keys })
 FC.service('messages').on('created', (message: UnknownRecord) => {
-  message && message.action === 'update' && message.keys && invalidateQuery(message.keys as QueryKeyValue | QueryKeyValue[])
+  message &&
+    message.action === 'update' &&
+    message.keys &&
+    invalidateQuery(message.keys as QueryKeyValue | QueryKeyValue[])
 })
 
 export { FC }

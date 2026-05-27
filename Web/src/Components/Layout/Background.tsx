@@ -1,8 +1,9 @@
 import React from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+
 import { background } from '../../Resources'
 
-function Background ({ children }: { children?: ReactNode }) {
+function Background({ children }: { children?: ReactNode }) {
   const backgroundStyle: CSSProperties = {
     position: 'absolute',
     top: 0,
@@ -13,7 +14,7 @@ function Background ({ children }: { children?: ReactNode }) {
     backgroundImage: `url(${background})`,
     backgroundPosition: 'center',
     backgroundSize: 'cover',
-    backgroundRepeat: 'noRepeat'
+    backgroundRepeat: 'noRepeat',
   }
 
   return <div style={backgroundStyle}>{children}</div>

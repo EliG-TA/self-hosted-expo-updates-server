@@ -1,12 +1,16 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import type { IntegrityIssue, IntegrityResult, UploadRecord } from '../../types'
+
 import { getMetadataSync, getUpdateHash } from './helpers'
 import { getLaunchAssetPath } from './patch'
 
-
 const isReadable = (p) => {
-  try { fs.accessSync(p, fs.constants.R_OK); return true } catch (e) { return false }
+  try {
+    fs.accessSync(p, fs.constants.R_OK)
+    return true
+  } catch (e) {
+    return false
+  }
 }
 
 /**
@@ -39,23 +43,32 @@ export const checkSingleIntegrity = (up) => {
 
   if (hasDir && isReadable(up.path)) {
     let metadata = null
-    try { ({ metadataJson: metadata } = getMetadataSync(up)) }
-    catch (e) { err('metadata', `metadata.json: ${e.message}`) }
+    try {
+      ;({ metadataJson: metadata } = getMetadataSync(up))
+    } catch (e) {
+      err('metadata', `metadata.json: ${e.message}`)
+    }
 
     const appJsonPath = path.join(up.path, 'app.json')
     if (!fs.existsSync(appJsonPath)) err('app-json', 'app.json missing')
     else if (!isReadable(appJsonPath)) err('app-json', 'app.json not readable')
     else {
-      try { JSON.parse(fs.readFileSync(appJsonPath, 'utf-8')) }
-      catch (e) { err('app-json', `app.json invalid JSON: ${e.message}`) }
+      try {
+        JSON.parse(fs.readFileSync(appJsonPath, 'utf-8'))
+      } catch (e) {
+        err('app-json', `app.json invalid JSON: ${e.message}`)
+      }
     }
 
     const pkgPath = path.join(up.path, 'package.json')
     if (!fs.existsSync(pkgPath)) err('package-json', 'package.json missing')
     else if (!isReadable(pkgPath)) err('package-json', 'package.json not readable')
     else {
-      try { JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) }
-      catch (e) { err('package-json', `package.json invalid JSON: ${e.message}`) }
+      try {
+        JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
+      } catch (e) {
+        err('package-json', `package.json invalid JSON: ${e.message}`)
+      }
     }
 
     if (metadata && up.updateHash) {
@@ -64,7 +77,9 @@ export const checkSingleIntegrity = (up) => {
         if (computed !== up.updateHash) {
           err('hash', `updateHash drift (db=${up.updateHash.slice(0, 12)}…, fs=${computed.slice(0, 12)}…)`)
         }
-      } catch (e) { /* metadata read already reported */ }
+      } catch (e) {
+        /* metadata read already reported */
+      }
     }
 
     if (metadata?.fileMetadata) {
@@ -73,8 +88,11 @@ export const checkSingleIntegrity = (up) => {
         if (!platMeta) continue
 
         let bundleFull = null
-        try { bundleFull = getLaunchAssetPath(up, platform) }
-        catch (e) { err('bundle', `${platform} bundle: ${e.message}`) }
+        try {
+          bundleFull = getLaunchAssetPath(up, platform)
+        } catch (e) {
+          err('bundle', `${platform} bundle: ${e.message}`)
+        }
 
         if (bundleFull) {
           if (!fs.existsSync(bundleFull)) err('bundle', `${platform} bundle missing`)
@@ -83,12 +101,14 @@ export const checkSingleIntegrity = (up) => {
             try {
               const st = fs.statSync(bundleFull)
               if (st.size === 0) err('bundle', `${platform} bundle is empty (0 bytes)`)
-            } catch (e) { /* unlikely */ }
+            } catch (e) {
+              /* unlikely */
+            }
           }
         }
 
         let missingAssetCount = 0
-        for (const asset of (platMeta.assets || [])) {
+        for (const asset of platMeta.assets || []) {
           const full = path.join(up.path, asset.path)
           if (!fs.existsSync(full)) missingAssetCount++
         }
@@ -101,8 +121,8 @@ export const checkSingleIntegrity = (up) => {
 
   return {
     issues,
-    errorCount: issues.filter(i => i.severity === 'error').length,
-    warningCount: issues.filter(i => i.severity === 'warning').length
+    errorCount: issues.filter((i) => i.severity === 'error').length,
+    warningCount: issues.filter((i) => i.severity === 'warning').length,
   }
 }
 
@@ -113,7 +133,7 @@ export const checkSingleIntegrity = (up) => {
  */
 export const isLaunchBundleHealthy = (up, platform) => {
   const { issues } = checkSingleIntegrity(up)
-  const blocking = issues.filter(i => {
+  const blocking = issues.filter((i) => {
     if (i.severity !== 'error') return false
     // Categories that affect bundle serving regardless of platform:
     if (['zip', 'dir', 'metadata'].includes(i.category)) return true

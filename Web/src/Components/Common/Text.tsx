@@ -1,5 +1,6 @@
 import React from 'react'
 import type { CSSProperties } from 'react'
+
 import { Colors } from './Colors'
 
 interface TextProps {
@@ -24,9 +25,8 @@ export const Text = ({ style, bold, italic, size, color, center, upCase, value, 
       ...(color === 'inherit' ? {} : { color: color || Colors.text }),
       textAlign: center ? 'center' : 'start',
       ...(title ? { fontFamily: 'Inter', fontWeight: 700, color: color || Colors.primary } : {}),
-      ...style
-    }}
-  >
+      ...style,
+    }}>
     {upCase && value ? String(value).toUpperCase() : value}
   </div>
 )

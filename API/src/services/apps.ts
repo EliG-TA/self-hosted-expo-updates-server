@@ -1,5 +1,5 @@
-import type { HookContextLike, UnknownRecord } from '../types'
 import s from '../hooks/security'
+import type { HookContextLike, UnknownRecord } from '../types'
 
 const setBsdiffDefault = (context: HookContextLike) => {
   const data = context.data as UnknownRecord | undefined
@@ -31,7 +31,7 @@ export default {
       create: [setBsdiffDefault],
       update: [],
       patch: [],
-      remove: []
+      remove: [],
     },
 
     after: {
@@ -41,7 +41,7 @@ export default {
       create: [],
       update: [],
       patch: [broadcastBsdiffToggle],
-      remove: []
-    }
-  }
+      remove: [],
+    },
+  },
 }

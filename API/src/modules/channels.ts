@@ -11,7 +11,7 @@ interface ChannelApp extends AppLike {
   on(event: string, callback: (...args: unknown[]) => void): void
 }
 
-export default function channels (app: ChannelApp) {
+export default function channels(app: ChannelApp) {
   if (typeof app.channel !== 'function') return false
 
   app.on('connection', (connection: unknown) => app.channel('anonymous').join(connection))
@@ -24,5 +24,7 @@ export default function channels (app: ChannelApp) {
     }
   })
 
-  app.service('messages').publish?.('created', (a: unknown, payload: UnknownRecord) => app.channel('authenticated').send(payload.data))
+  app
+    .service('messages')
+    .publish?.('created', (a: unknown, payload: UnknownRecord) => app.channel('authenticated').send(payload.data))
 }

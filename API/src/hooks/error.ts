@@ -5,5 +5,5 @@ export default {
   create: [],
   update: [],
   patch: [],
-  remove: []
+  remove: [],
 }

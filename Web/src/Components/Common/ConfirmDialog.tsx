@@ -1,7 +1,8 @@
 import { Dialog } from 'primereact/dialog'
+
+import { Button } from './Button'
 import { Flex } from './Flex'
 import { Text } from './Text'
-import { Button } from './Button'
 
 // Reusable styled confirm dialog that mirrors the look of the Release /
 // Delete prompts in Release.tsx, so destructive actions across the app
@@ -21,7 +22,7 @@ export const ConfirmDialog = ({
   cancelIcon = 'ban',
   onConfirm,
   onCancel,
-  loading = false
+  loading = false,
 }) => {
   if (!visible) return null
   return (
@@ -30,8 +31,7 @@ export const ConfirmDialog = ({
       modal
       style={{ width: '100%', maxWidth: 600 }}
       onHide={loading ? () => null : onCancel}
-      header={<Text value={title} bold size={28} />}
-    >
+      header={<Text value={title} bold size={28} />}>
       {children}
       <Flex jb row fw style={{ marginTop: 20 }}>
         <Button icon={cancelIcon} label={cancelLabel} onClick={onCancel} disabled={loading} />

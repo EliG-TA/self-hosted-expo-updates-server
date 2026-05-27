@@ -1,10 +1,10 @@
-import type { AppLike, UnknownRecord } from '../types'
-import s from '../hooks/security'
-
 import * as fs from 'fs'
 import * as path from 'path'
+
+import s from '../hooks/security'
 import { logger } from '../modules'
 import { PATCH_DIR_NAME } from '../modules/expo/patch'
+import type { AppLike, UnknownRecord } from '../types'
 
 const CACHE_TTL_MS = 10 * 1000
 const UPDATES_ROOT = process.env.UPDATES_ROOT || '/updates'
@@ -30,7 +30,9 @@ const dirSize = (dir) => {
       try {
         if (entry.isDirectory()) stack.push(full)
         else if (entry.isFile()) total += fs.statSync(full).size
-      } catch (e) { /* ignore transient FS errors */ }
+      } catch (e) {
+        /* ignore transient FS errors */
+      }
     }
   }
   return total
@@ -59,7 +61,11 @@ const computeSizes = () => {
           walk(full, depth + 1)
         }
       } else if (entry.isFile()) {
-        try { updatesBytes += fs.statSync(full).size } catch (e) { /* ignore */ }
+        try {
+          updatesBytes += fs.statSync(full).size
+        } catch (e) {
+          /* ignore */
+        }
       }
     }
   }
@@ -81,7 +87,7 @@ const computeSizes = () => {
         bfree: stat.bfree,
         bavail: stat.bavail,
         totalBytes,
-        freeBytes
+        freeBytes,
       })
     }
   } catch (e) {
@@ -95,21 +101,27 @@ const computeSizes = () => {
     totalBytes,
     freeBytes,
     usedBytes,
-    computedAt: new Date()
+    computedAt: new Date(),
   }
 }
 
 class Service {
   options: UnknownRecord
   app: AppLike
-  constructor (options?: UnknownRecord) { this.options = options || {} }
-  setup (app: AppLike) { this.app = app }
+  constructor(options?: UnknownRecord) {
+    this.options = options || {}
+  }
+  setup(app: AppLike) {
+    this.app = app
+  }
 
-  async find () { return this.get() }
+  async find() {
+    return this.get()
+  }
 
-  async get () {
+  async get() {
     const now = Date.now()
-    if (cache && (now - cacheAt) < CACHE_TTL_MS) return cache
+    if (cache && now - cacheAt < CACHE_TTL_MS) return cache
     cache = computeSizes()
     cacheAt = now
     return cache
@@ -127,10 +139,16 @@ export default {
       create: [s.methodNotAllowed],
       update: [s.methodNotAllowed],
       patch: [s.methodNotAllowed],
-      remove: [s.methodNotAllowed]
+      remove: [s.methodNotAllowed],
     },
     after: {
-      all: [], find: [], get: [], create: [], update: [], patch: [], remove: []
-    }
-  }
+      all: [],
+      find: [],
+      get: [],
+      create: [],
+      update: [],
+      patch: [],
+      remove: [],
+    },
+  },
 }

@@ -1,6 +1,7 @@
-import type { HookContextLike } from '../types'
-import * as Err from '@feathersjs/errors'
 import { hooks } from '@feathersjs/authentication'
+import * as Err from '@feathersjs/errors'
+
+import type { HookContextLike } from '../types'
 
 const { authenticate } = hooks
 
@@ -21,7 +22,7 @@ const security = {
       throw new Err.Forbidden('Global Update Not Authorized: Enitity ID not provided')
     }
     return context
-  }
+  },
 }
 
 export default security

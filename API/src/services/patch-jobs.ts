@@ -1,31 +1,28 @@
-import type { Db } from 'mongodb'
 import type { MongoDBAdapterOptions } from '@feathersjs/mongodb'
-import type { AppLike, HookContextLike, UnknownRecord } from '../types'
-
 import { MongoDBService } from '@feathersjs/mongodb'
+import type { Db } from 'mongodb'
+
 import error from '../hooks/error'
 import s from '../hooks/security'
 import { logger } from '../modules'
+import type { AppLike, HookContextLike } from '../types'
 
 const TTL_SECONDS = 30 * 24 * 60 * 60 // 30 days
 
 class PatchJobsService extends MongoDBService {
   app: AppLike
 
-  constructor (options?: Partial<MongoDBAdapterOptions>) {
+  constructor(options?: Partial<MongoDBAdapterOptions>) {
     super({ Model: undefined, ...options })
   }
 
-  setup (app: AppLike, path: string) {
+  setup(app: AppLike, path: string) {
     this.app = app
     ;(app.get('mongoClient') as Promise<Db>).then(async (db) => {
       const collection = db.collection('patch-jobs')
       this.options.Model = collection
       try {
-        await collection.createIndex(
-          { startedAt: 1 },
-          { expireAfterSeconds: TTL_SECONDS, name: 'ttl_startedAt' }
-        )
+        await collection.createIndex({ startedAt: 1 }, { expireAfterSeconds: TTL_SECONDS, name: 'ttl_startedAt' })
         await collection.createIndex({ project: 1, startedAt: -1 })
         await collection.createIndex({ patchId: 1 })
       } catch (e) {
@@ -53,7 +50,7 @@ export default {
       create: [],
       update: [s.methodNotAllowed],
       patch: [s.methodNotAllowed],
-      remove: []
+      remove: [],
     },
     after: {
       all: [],
@@ -62,8 +59,8 @@ export default {
       create: [broadcastJob],
       update: [],
       patch: [],
-      remove: [broadcastJob]
+      remove: [broadcastJob],
     },
-    error
-  }
+    error,
+  },
 }

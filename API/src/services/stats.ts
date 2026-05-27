@@ -1,7 +1,7 @@
-import type { AppLike, ClientRecord, UnknownRecord } from '../types'
-import s from '../hooks/security'
-
 import moment from 'moment'
+
+import s from '../hooks/security'
+import type { AppLike, ClientRecord, UnknownRecord } from '../types'
 
 interface UpdateStats {
   onThisVersion: number
@@ -20,16 +20,16 @@ class Service {
   options: UnknownRecord
   app: AppLike
 
-  constructor (options?: UnknownRecord) {
+  constructor(options?: UnknownRecord) {
     this.options = options || {}
   }
 
-  setup (app: AppLike) {
+  setup(app: AppLike) {
     this.app = app
   }
 
-  async get (project: string) {
-    const clients = await this.app.service('clients').find({ query: { project } }) as ClientRecord[]
+  async get(project: string) {
+    const clients = (await this.app.service('clients').find({ query: { project } })) as ClientRecord[]
     const stats: Record<string, StatsBucket> = {}
 
     // First pass — accumulate per-(version,platform,channel) totals and
@@ -43,7 +43,7 @@ class Service {
           platform,
           releaseChannel,
           embeddedUpdates: new Set(),
-          updates: {}
+          updates: {},
         }
       }
       if (embeddedUpdate) stats[key].embeddedUpdates.add(embeddedUpdate)
@@ -60,18 +60,20 @@ class Service {
     // Second pass — flatten and mark which updates correspond to embedded
     // builds (an update is "embedded" if it appears in the group's
     // embeddedUpdates set).
-    const result = Object.values(stats).map(({ updates, embeddedUpdates, ...rest }) => {
-      const embeddedList = [...embeddedUpdates]
-      return {
-        ...rest,
-        embeddedUpdates: embeddedList,
-        updates: Object.entries(updates).map(([updateId, fields]) => ({
-          updateId,
-          ...fields,
-          isBuild: embeddedUpdates.has(updateId)
-        }))
-      }
-    }).sort((a, b) => a.version > b.version ? -1 : a.version < b.version ? 1 : 0)
+    const result = Object.values(stats)
+      .map(({ updates, embeddedUpdates, ...rest }) => {
+        const embeddedList = [...embeddedUpdates]
+        return {
+          ...rest,
+          embeddedUpdates: embeddedList,
+          updates: Object.entries(updates).map(([updateId, fields]) => ({
+            updateId,
+            ...fields,
+            isBuild: embeddedUpdates.has(updateId),
+          })),
+        }
+      })
+      .sort((a, b) => (a.version > b.version ? -1 : a.version < b.version ? 1 : 0))
 
     return result
   }
@@ -88,7 +90,7 @@ export default {
       create: [],
       update: [],
       patch: [],
-      remove: []
+      remove: [],
     },
     after: {
       all: [],
@@ -97,7 +99,7 @@ export default {
       create: [],
       update: [],
       patch: [],
-      remove: []
-    }
-  }
+      remove: [],
+    },
+  },
 }

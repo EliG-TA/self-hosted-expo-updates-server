@@ -11,7 +11,7 @@ export default {
       create: [],
       update: [],
       patch: [],
-      remove: []
+      remove: [],
     },
 
     after: {
@@ -21,7 +21,7 @@ export default {
       create: [],
       update: [],
       patch: [],
-      remove: []
-    }
-  }
+      remove: [],
+    },
+  },
 }

@@ -1,5 +1,3 @@
-import type { AppLike, UnknownRecord, UploadRecord } from '../types'
-
 import * as Err from '@feathersjs/errors'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -7,8 +5,9 @@ import * as path from 'path'
 import s from '../hooks/security'
 import { generateSelfSigned } from '../modules/expo/certs'
 import { getMetadataSync } from '../modules/expo/helpers'
-import { getLaunchAssetPath, sumPatchesSize } from '../modules/expo/patch'
 import { checkSingleIntegrity } from '../modules/expo/integrity'
+import { getLaunchAssetPath, sumPatchesSize } from '../modules/expo/patch'
+import type { AppLike, UnknownRecord, UploadRecord } from '../types'
 
 const UPLOADS_ROOT = process.env.UPLOADS_ROOT || '/uploads'
 const UPDATES_ROOT = process.env.UPDATES_ROOT || '/updates'
@@ -19,13 +18,19 @@ const dirSizeRecursive = (dir) => {
   while (stack.length) {
     const cur = stack.pop()
     let entries
-    try { entries = fs.readdirSync(cur, { withFileTypes: true }) } catch (e) { continue }
+    try {
+      entries = fs.readdirSync(cur, { withFileTypes: true })
+    } catch (e) {
+      continue
+    }
     for (const entry of entries) {
       const full = path.join(cur, entry.name)
       try {
         if (entry.isDirectory()) stack.push(full)
         else if (entry.isFile()) total += fs.statSync(full).size
-      } catch (e) { /* ignore */ }
+      } catch (e) {
+        /* ignore */
+      }
     }
   }
   return total
@@ -35,18 +40,18 @@ class Service {
   options: UnknownRecord
   app: AppLike
 
-  constructor (options?: UnknownRecord) {
+  constructor(options?: UnknownRecord) {
     this.options = options || {}
   }
 
-  setup (app: AppLike) {
+  setup(app: AppLike) {
     this.app = app
   }
 
-  async setRelease ({ uploadId }) {
+  async setRelease({ uploadId }) {
     if (!uploadId) throw new Err.BadRequest('Missing uploadId or path')
 
-    const upload = await this.app.service('uploads').get(uploadId) as UploadRecord
+    const upload = (await this.app.service('uploads').get(uploadId)) as UploadRecord
     if (!upload) throw new Err.NotFound('Upload not found')
 
     // Pre-flight: refuse to release/rollback an upload whose files are
@@ -55,29 +60,32 @@ class Service {
     const integrity = checkSingleIntegrity(upload)
     if (integrity.errorCount > 0) {
       const lines = integrity.issues
-        .filter(i => i.severity === 'error')
-        .map(i => `• ${i.message}`)
+        .filter((i) => i.severity === 'error')
+        .map((i) => `• ${i.message}`)
         .join('\n')
-      throw new Err.BadRequest(
-        `Cannot release: this update has ${integrity.errorCount} integrity error(s):\n${lines}`
-      )
+      throw new Err.BadRequest(`Cannot release: this update has ${integrity.errorCount} integrity error(s):\n${lines}`)
     }
 
-    const uploads = await this.app.service('uploads').find({ query: { project: upload.project, version: upload.version, releaseChannel: upload.releaseChannel } }) as UploadRecord[]
+    const uploads = (await this.app.service('uploads').find({
+      query: { project: upload.project, version: upload.version, releaseChannel: upload.releaseChannel },
+    })) as UploadRecord[]
 
-    await Promise.all(uploads.map(upd =>
-      this.app.service('uploads').patch(upd._id, {
-        status: upd._id.toString() === upload._id.toString() ? 'released' : (upd.status === 'ready' ? 'ready' : 'obsolete'),
-        releasedAt: upd._id.toString() === upload._id.toString() ? new Date().toISOString() : null
-      })
-    ))
+    await Promise.all(
+      uploads.map((upd) =>
+        this.app.service('uploads').patch(upd._id, {
+          status:
+            upd._id.toString() === upload._id.toString() ? 'released' : upd.status === 'ready' ? 'ready' : 'obsolete',
+          releasedAt: upd._id.toString() === upload._id.toString() ? new Date().toISOString() : null,
+        }),
+      ),
+    )
     return { message: 'Update Set' }
   }
 
-  async deleteRelease ({ uploadId }) {
+  async deleteRelease({ uploadId }) {
     if (!uploadId) throw new Err.BadRequest('Missing uploadId or path')
 
-    const upload = await this.app.service('uploads').get(uploadId) as UploadRecord
+    const upload = (await this.app.service('uploads').get(uploadId)) as UploadRecord
     if (!upload) throw new Err.NotFound('Upload not found')
 
     // Per-file ops so callers (notably bulk cleanup) can tell apart "file
@@ -109,7 +117,7 @@ class Service {
     return { message: 'Update Deleted', ops: fileOps }
   }
 
-  async update (id, data) {
+  async update(id, data) {
     if (id === 'release') return this.setRelease(data)
     if (id === 'delete') return this.deleteRelease(data)
     if (id === 'cleanupOldUpdates') return this.cleanupOldUpdates(data || {})
@@ -129,12 +137,12 @@ class Service {
    * Zips are scanned globally (we can't tell project from a zip name
    * alone), dirs are scoped to the requested project.
    */
-  async scanOrphans ({ project }) {
+  async scanOrphans({ project }) {
     if (!project) throw new Err.BadRequest('Missing project')
 
-    const allUploads = await this.app.service('uploads').find({ query: {} }) as UploadRecord[]
-    const knownZips = new Set(allUploads.map(u => u.filename).filter(Boolean))
-    const knownPaths = new Set(allUploads.map(u => u.path).filter(Boolean))
+    const allUploads = (await this.app.service('uploads').find({ query: {} })) as UploadRecord[]
+    const knownZips = new Set(allUploads.map((u) => u.filename).filter(Boolean))
+    const knownPaths = new Set(allUploads.map((u) => u.path).filter(Boolean))
 
     const orphans = []
 
@@ -147,16 +155,22 @@ class Service {
         const full = path.join(UPLOADS_ROOT, e.name)
         if (knownZips.has(full)) continue
         let st = null
-        try { st = fs.statSync(full) } catch (err) { continue }
+        try {
+          st = fs.statSync(full)
+        } catch (err) {
+          continue
+        }
         orphans.push({
           type: 'zip',
           path: full,
           name: e.name,
           sizeBytes: st.size,
-          modifiedAt: st.mtime
+          modifiedAt: st.mtime,
         })
       }
-    } catch (e) { /* uploads root missing */ }
+    } catch (e) {
+      /* uploads root missing */
+    }
 
     // Orphan dirs — per-project scan of UPDATES_ROOT/<project>/<version>/<id>.
     const projectDir = path.join(UPDATES_ROOT, project)
@@ -166,14 +180,22 @@ class Service {
         if (!v.isDirectory()) continue
         const versionDir = path.join(projectDir, v.name)
         let uploadDirs
-        try { uploadDirs = fs.readdirSync(versionDir, { withFileTypes: true }) } catch (e) { continue }
+        try {
+          uploadDirs = fs.readdirSync(versionDir, { withFileTypes: true })
+        } catch (e) {
+          continue
+        }
         for (const u of uploadDirs) {
           if (!u.isDirectory()) continue
           const full = path.join(versionDir, u.name)
           if (knownPaths.has(full)) continue
 
           let mtime = null
-          try { mtime = fs.statSync(full).mtime } catch (e) { /* ignore */ }
+          try {
+            mtime = fs.statSync(full).mtime
+          } catch (e) {
+            /* ignore */
+          }
           const sizeBytes = dirSizeRecursive(full)
 
           orphans.push({
@@ -183,24 +205,26 @@ class Service {
             sizeBytes,
             modifiedAt: mtime,
             project,
-            version: v.name
+            version: v.name,
           })
         }
       }
-    } catch (e) { /* project dir missing */ }
+    } catch (e) {
+      /* project dir missing */
+    }
 
     const totalBytes = orphans.reduce((acc, o) => acc + (o.sizeBytes || 0), 0)
     return {
       project,
       orphanCount: orphans.length,
-      zipCount: orphans.filter(o => o.type === 'zip').length,
-      dirCount: orphans.filter(o => o.type === 'dir').length,
+      zipCount: orphans.filter((o) => o.type === 'zip').length,
+      dirCount: orphans.filter((o) => o.type === 'dir').length,
       totalBytes,
-      orphans
+      orphans,
     }
   }
 
-  async deleteOrphan ({ path: targetPath, type }) {
+  async deleteOrphan({ path: targetPath, type }) {
     if (!targetPath) throw new Err.BadRequest('Missing path')
     // Safety: only allow paths inside our managed roots. Without this gate
     // the endpoint becomes a remote-delete primitive against the API host.
@@ -226,12 +250,12 @@ class Service {
    * exactly one row in `problems` (or none, if the upload is clean) —
    * the Release dialog uses this to gate the Release/Rollback action.
    */
-  async checkIntegrity ({ project, uploadId }) {
+  async checkIntegrity({ project, uploadId }) {
     if (!project && !uploadId) throw new Err.BadRequest('Missing project or uploadId')
 
     const uploads = uploadId
-      ? [await this.app.service('uploads').get(uploadId) as UploadRecord]
-      : await this.app.service('uploads').find({ query: { project } }) as UploadRecord[]
+      ? [(await this.app.service('uploads').get(uploadId)) as UploadRecord]
+      : ((await this.app.service('uploads').find({ query: { project } })) as UploadRecord[])
 
     const problems = []
     const categoryCounts = {}
@@ -253,12 +277,12 @@ class Service {
         createdAt: up.createdAt,
         issues,
         errorCount,
-        warningCount
+        warningCount,
       })
     }
 
-    const errorRowCount = problems.filter(p => p.errorCount > 0).length
-    const warningRowCount = problems.filter(p => p.errorCount === 0 && p.warningCount > 0).length
+    const errorRowCount = problems.filter((p) => p.errorCount > 0).length
+    const warningRowCount = problems.filter((p) => p.errorCount === 0 && p.warningCount > 0).length
 
     return {
       project,
@@ -267,7 +291,7 @@ class Service {
       errorRowCount,
       warningRowCount,
       categoryCounts,
-      problems
+      problems,
     }
   }
 
@@ -284,13 +308,13 @@ class Service {
    * at it again. Combined with the age check this gives a safe
    * "old AND nobody's on it AND not the active release" rule.
    */
-  async getOldUpdatesCleanupCandidates ({ project, olderThanDays = 30 }) {
+  async getOldUpdatesCleanupCandidates({ project, olderThanDays = 30 }) {
     if (!project) throw new Err.BadRequest('Missing project')
 
     const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000)
-    const cleanable = await this.app.service('uploads').find({
-      query: { project, status: { $ne: 'released' } }
-    }) as UploadRecord[]
+    const cleanable = (await this.app.service('uploads').find({
+      query: { project, status: { $ne: 'released' } },
+    })) as UploadRecord[]
 
     const candidates = []
     let totalBytes = 0
@@ -305,11 +329,9 @@ class Service {
       // upload that was never released still gets one assigned on extract).
       if (up.updateId) {
         const activeNow = await this.app.service('clients').find({
-          query: { currentUpdate: up.updateId, $limit: 1 }
+          query: { currentUpdate: up.updateId, $limit: 1 },
         })
-        const activeRows = Array.isArray(activeNow)
-          ? activeNow
-          : ((activeNow as { data?: unknown[] })?.data || [])
+        const activeRows = Array.isArray(activeNow) ? activeNow : (activeNow as { data?: unknown[] })?.data || []
         const stillActive = activeRows.length > 0
         if (stillActive) continue
       }
@@ -320,7 +342,9 @@ class Service {
       try {
         const sizes = await this.getUpdateSizes({ query: { uploadId: up._id } })
         sizeBytes = sizes.total
-      } catch (e) { /* leave sizeBytes = null */ }
+      } catch (e) {
+        /* leave sizeBytes = null */
+      }
 
       candidates.push({
         _id: up._id,
@@ -330,7 +354,7 @@ class Service {
         gitCommit: up.gitCommit,
         status: up.status,
         createdAt: up.createdAt,
-        sizeBytes
+        sizeBytes,
       })
       if (typeof sizeBytes === 'number') totalBytes += sizeBytes
     }
@@ -340,11 +364,11 @@ class Service {
       olderThanDays,
       count: candidates.length,
       totalBytes,
-      candidates
+      candidates,
     }
   }
 
-  async cleanupOldUpdates ({ project, olderThanDays = 30 }) {
+  async cleanupOldUpdates({ project, olderThanDays = 30 }) {
     const { candidates, totalBytes } = await this.getOldUpdatesCleanupCandidates({ project, olderThanDays })
     let removed = 0
     let zipsRemoved = 0
@@ -356,7 +380,7 @@ class Service {
       try {
         const res = await this.deleteRelease({ uploadId: c._id })
         removed++
-        for (const op of (res.ops || [])) {
+        for (const op of res.ops || []) {
           if (op.error) errors.push({ uploadId: c._id, path: op.path, error: op.error })
           if (op.type === 'zip-archive') {
             if (op.removed) zipsRemoved++
@@ -374,11 +398,11 @@ class Service {
     return { removed, totalBytes, zipsRemoved, dirsRemoved, zipsMissing, dirsMissing, errors }
   }
 
-  async getUpdateSizes ({ query }) {
+  async getUpdateSizes({ query }) {
     const uploadId = query?.uploadId
     if (!uploadId) throw new Err.BadRequest('Missing uploadId')
 
-    const upload = await this.app.service('uploads').get(uploadId) as UploadRecord
+    const upload = (await this.app.service('uploads').get(uploadId)) as UploadRecord
     if (!upload) throw new Err.NotFound('Upload not found')
 
     // Prefer the real on-disk size — `upload.size` in Mongo is captured at
@@ -386,8 +410,11 @@ class Service {
     // manual cleanup. Fall back to the DB value only if the file is gone.
     let zipBytes = 0
     if (upload.filename) {
-      try { zipBytes = fs.statSync(upload.filename).size }
-      catch (e) { zipBytes = Number(upload.size) || 0 }
+      try {
+        zipBytes = fs.statSync(upload.filename).size
+      } catch (e) {
+        zipBytes = Number(upload.size) || 0
+      }
     } else {
       zipBytes = Number(upload.size) || 0
     }
@@ -402,11 +429,15 @@ class Service {
       assetsIosOnlyCount: 0,
       assetsAndroidOnlyCount: 0,
       patchesBytes: 0,
-      total: 0
+      total: 0,
     }
 
     let metadata = null
-    try { ({ metadataJson: metadata } = getMetadataSync(upload)) } catch (e) { /* no metadata */ }
+    try {
+      ;({ metadataJson: metadata } = getMetadataSync(upload))
+    } catch (e) {
+      /* no metadata */
+    }
 
     if (metadata?.fileMetadata && upload.path) {
       // Bundles are platform-specific (different Hermes bytecode targets).
@@ -416,42 +447,51 @@ class Service {
         try {
           const bundleFull = getLaunchAssetPath(upload, platform)
           result.bundleByPlatform[platform] = fs.statSync(bundleFull).size
-        } catch (e) { /* missing or no bundle for this platform */ }
+        } catch (e) {
+          /* missing or no bundle for this platform */
+        }
       }
 
       // Assets are mostly shared across platforms (MD5-keyed by content).
       // Dedupe by path so the same file doesn't get counted twice.
-      const iosPaths = new Set<string>((metadata.fileMetadata.ios?.assets || []).map(a => a.path))
-      const androidPaths = new Set<string>((metadata.fileMetadata.android?.assets || []).map(a => a.path))
+      const iosPaths = new Set<string>((metadata.fileMetadata.ios?.assets || []).map((a) => a.path))
+      const androidPaths = new Set<string>((metadata.fileMetadata.android?.assets || []).map((a) => a.path))
       const allPaths = new Set([...iosPaths, ...androidPaths])
 
       result.assetsCount = allPaths.size
-      result.assetsSharedCount = [...iosPaths].filter(p => androidPaths.has(p)).length
-      result.assetsIosOnlyCount = [...iosPaths].filter(p => !androidPaths.has(p)).length
-      result.assetsAndroidOnlyCount = [...androidPaths].filter(p => !iosPaths.has(p)).length
+      result.assetsSharedCount = [...iosPaths].filter((p) => androidPaths.has(p)).length
+      result.assetsIosOnlyCount = [...iosPaths].filter((p) => !androidPaths.has(p)).length
+      result.assetsAndroidOnlyCount = [...androidPaths].filter((p) => !iosPaths.has(p)).length
 
       for (const assetPath of allPaths) {
         try {
           const full = path.join(upload.path, assetPath)
           result.assetsBytes += fs.statSync(full).size
-        } catch (e) { /* missing */ }
+        } catch (e) {
+          /* missing */
+        }
       }
     }
 
-    try { result.patchesBytes = sumPatchesSize(upload) } catch (e) { /* ignore */ }
+    try {
+      result.patchesBytes = sumPatchesSize(upload)
+    } catch (e) {
+      /* ignore */
+    }
 
     result.total =
       result.zipBytes +
-      result.bundleByPlatform.ios + result.bundleByPlatform.android +
+      result.bundleByPlatform.ios +
+      result.bundleByPlatform.android +
       result.assetsBytes +
       result.patchesBytes
 
     return result
   }
 
-  async get (id, params) {
+  async get(id, params) {
     if (id === 'generateSelfSigned') return generateSelfSigned()
-    if (id === 'getUploadKey') return ({ uploadKey: this.app.get('uploadKey') })
+    if (id === 'getUploadKey') return { uploadKey: this.app.get('uploadKey') }
     if (id === 'updateSizes') return this.getUpdateSizes(params || {})
     if (id === 'oldUpdatesCleanupCandidates') {
       return this.getOldUpdatesCleanupCandidates(params?.query || {})
@@ -471,7 +511,7 @@ export default {
       create: [s.methodNotAllowed],
       update: [],
       patch: [s.methodNotAllowed],
-      remove: [s.methodNotAllowed]
+      remove: [s.methodNotAllowed],
     },
     after: {
       all: [],
@@ -480,9 +520,9 @@ export default {
       create: [],
       update: [],
       patch: [],
-      remove: []
-    }
-  }
+      remove: [],
+    },
+  },
 }
 
 export { Service }

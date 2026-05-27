@@ -1,13 +1,13 @@
-
 import React from 'react'
 import type { CSSProperties } from 'react'
-import { motion } from 'framer-motion'
-import { Text, HamburgerMenu, Flex, SlidingMenu, Colors } from '..'
-import { doLogout } from '../../State'
-import { useCQuery } from '../../Services'
-import menuItems from './MenuItems'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+
+import { useCQuery } from '../../Services'
+import { doLogout } from '../../State'
 import type { DiskUsageRecord } from '../../types'
+import { Colors, Flex, HamburgerMenu, SlidingMenu, Text } from '..'
+import menuItems from './MenuItems'
 
 const formatBytes = (n: number) => {
   if (!n) return '0 B'
@@ -23,14 +23,14 @@ const DiskUsageChip = () => {
   if (isError) {
     return (
       <Flex row style={styles.chip}>
-        <Text value={`disk usage error: ${error?.message || 'unknown'}`} size={11} color='#ff6b6b' />
+        <Text value={`disk usage error: ${error?.message || 'unknown'}`} size={11} color="#ff6b6b" />
       </Flex>
     )
   }
   if (isLoading || !data) {
     return (
       <Flex row style={styles.chip}>
-        <Text value='disk usage…' size={11} color='rgba(255,255,255,0.5)' />
+        <Text value="disk usage…" size={11} color="rgba(255,255,255,0.5)" />
       </Flex>
     )
   }
@@ -40,24 +40,24 @@ const DiskUsageChip = () => {
   return (
     <Flex row style={styles.chip}>
       <Text value={`Updates: ${formatBytes(updatesBytes)}`} size={11} color={Colors.text} />
-      <Text value='·' size={11} color={Colors.text} style={{ margin: '0 6px' }} />
+      <Text value="·" size={11} color={Colors.text} style={{ margin: '0 6px' }} />
       <Text value={`Patches: ${formatBytes(patchesBytes)}`} size={11} color={Colors.text} />
-      <Text value='·' size={11} color={Colors.text} style={{ margin: '0 6px' }} />
+      <Text value="·" size={11} color={Colors.text} style={{ margin: '0 6px' }} />
       <Text
         value={`Disk: ${formatBytes(usedBytes)} / ${formatBytes(totalBytes)} (${usedPct}%)`}
         size={11}
         color={usedPct > 90 ? '#ff6b6b' : Colors.text}
       />
-      <Text value='·' size={11} color={Colors.text} style={{ margin: '0 6px' }} />
+      <Text value="·" size={11} color={Colors.text} style={{ margin: '0 6px' }} />
       <Text value={`Free: ${formatBytes(freeBytes)}`} size={11} color={Colors.text} />
     </Flex>
   )
 }
 
-export function TopMenu () {
+export function TopMenu() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const { label: currentPage } = menuItems?.find(item => pathname?.includes(item.path)) || { label: '' }
+  const { label: currentPage } = menuItems?.find((item) => pathname?.includes(item.path)) || { label: '' }
 
   const menuAction = (page: string, external?: boolean) => {
     if (page === 'Logout') return doLogout()
@@ -72,17 +72,26 @@ export function TopMenu () {
       <motion.div style={styles.containerStyle} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1 }}>
         <Flex row style={{ paddingLeft: 20 }}>
           <HamburgerMenu />
-          <Text color={Colors.primary} title size='20px' style={{ marginLeft: 10 }} value={(currentPage || '').toUpperCase()} />
+          <Text
+            color={Colors.primary}
+            title
+            size="20px"
+            style={{ marginLeft: 10 }}
+            value={(currentPage || '').toUpperCase()}
+          />
         </Flex>
         <Flex row fh style={{ marginRight: 20, gap: 16 }}>
           <DiskUsageChip />
-          <a href='https://ghio.io' target='_blank' rel='noreferrer' style={{ textDecoration: 'none' }}>
-            <Text value='free software by GHIO.IO' size={10} color={Colors.primary} style={{ width: 64, textAlign: 'right' }} />
+          <a href="https://ghio.io" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+            <Text
+              value="free software by GHIO.IO"
+              size={10}
+              color={Colors.primary}
+              style={{ width: 64, textAlign: 'right' }}
+            />
           </a>
-
         </Flex>
       </motion.div>
-
     </>
   )
 }
@@ -93,7 +102,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.05)',
     border: '1px solid rgba(255,255,255,0.1)',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   containerStyle: {
     width: '100%',
@@ -108,6 +117,6 @@ const styles: Record<string, CSSProperties> = {
     WebkitBackdropFilter: 'blur(16px) saturate(180%)',
     borderBottom: ' 1px solid rgba(255, 255, 255, 0.125)',
     y: -50,
-    opacity: 0
-  }
+    opacity: 0,
+  },
 }

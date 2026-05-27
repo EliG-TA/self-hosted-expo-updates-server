@@ -1,4 +1,3 @@
-
 const black = '#000000'
 const white = '#ffffff'
 
@@ -11,5 +10,5 @@ export const Colors = {
   textOnDanger: white,
   iconOnDanger: white,
   inputText: white,
-  text: white
+  text: white,
 }

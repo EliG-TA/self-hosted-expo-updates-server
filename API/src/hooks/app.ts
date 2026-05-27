@@ -1,9 +1,8 @@
-import type { HookContextLike, UnknownRecord } from '../types'
-
 // Application hooks that run for every service
 import * as util from 'util'
 
 import { logger } from '../modules'
+import type { HookContextLike, UnknownRecord } from '../types'
 
 const ignoredCodes = [410, 503, 400, 405, 403, 429, 404]
 const ignoredNames = ['NotAuthenticated', 'Conflict']
@@ -48,7 +47,7 @@ export default {
     create: [],
     update: [],
     patch: [],
-    remove: []
+    remove: [],
   },
 
   after: {
@@ -58,7 +57,7 @@ export default {
     create: [],
     update: [],
     patch: [],
-    remove: []
+    remove: [],
   },
 
   error: {
@@ -68,6 +67,6 @@ export default {
     create: [],
     update: [],
     patch: [],
-    remove: []
-  }
+    remove: [],
+  },
 }

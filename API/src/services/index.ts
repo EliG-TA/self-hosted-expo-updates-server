@@ -1,7 +1,8 @@
-import type { Db } from 'mongodb'
-import type { AppLike, UnknownRecord } from '../types'
 import { MongoDBService } from '@feathersjs/mongodb'
+import type { Db } from 'mongodb'
+
 import error from '../hooks/error'
+import type { AppLike, UnknownRecord } from '../types'
 import api from './api'
 import apps from './apps'
 import authentication from './authentication'
@@ -17,7 +18,9 @@ import uploads from './uploads'
 import users from './users'
 import utils from './utils'
 
-type Configurator = (app: AppLike & { configure(service: unknown): void; use(name: string, service: unknown, middleware?: unknown): void }) => void
+type Configurator = (
+  app: AppLike & { configure(service: unknown): void; use(name: string, service: unknown, middleware?: unknown): void },
+) => void
 
 interface ServiceDefinition {
   name?: string
@@ -47,15 +50,20 @@ const services: ServiceModule[] = [
   upload,
   uploads,
   users,
-  utils
+  utils,
 ]
 
-export default function configureServices (app?: AppLike & { configure(service: unknown): void; use(name: string, service: unknown, middleware?: unknown): void }) {
+export default function configureServices(
+  app?: AppLike & {
+    configure(service: unknown): void
+    use(name: string, service: unknown, middleware?: unknown): void
+  },
+) {
   if (!app) return services
 
   const defaultOptions = {
     paginate: app.get('paginate'),
-    whitelist: ['$regex', '$exists']
+    whitelist: ['$regex', '$exists'],
   }
 
   services.forEach((service: ServiceModule) => {
@@ -77,7 +85,7 @@ export default function configureServices (app?: AppLike & { configure(service: 
       const opts = {
         ...defaultOptions,
         ...(noBsonIDs ? { disableObjectify: true } : {}),
-        Model: (app.get('mongoClient') as Promise<Db>).then((db) => db.collection(name))
+        Model: (app.get('mongoClient') as Promise<Db>).then((db) => db.collection(name)),
       }
       app.use(name, new MongoDBService(opts))
     }

@@ -1,5 +1,6 @@
-import s from '../hooks/security'
 import { hooks } from '@feathersjs/authentication-local'
+
+import s from '../hooks/security'
 
 const { hashPassword, protect } = hooks
 
@@ -13,7 +14,7 @@ export default {
       create: [hashPassword('password')],
       update: [hashPassword('password')],
       patch: [hashPassword('password')],
-      remove: []
+      remove: [],
     },
 
     after: {
@@ -23,7 +24,7 @@ export default {
       create: [],
       update: [],
       patch: [],
-      remove: []
-    }
-  }
+      remove: [],
+    },
+  },
 }

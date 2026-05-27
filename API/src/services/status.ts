@@ -1,24 +1,24 @@
-import type { AppLike, UnknownRecord } from '../types'
 import { logger } from '../modules'
+import type { AppLike, UnknownRecord } from '../types'
 class Service {
   options: UnknownRecord
   app: AppLike
 
-  constructor (options?: UnknownRecord) {
+  constructor(options?: UnknownRecord) {
     this.options = options || {}
   }
 
-  setup (app: AppLike) {
+  setup(app: AppLike) {
     this.app = app
   }
 
-  async get (data?: unknown) {
+  async get(data?: unknown) {
     return 'NotFound'
   }
 
-  async find () {
+  async find() {
     try {
-      const [user] = await this.app.services.users.find({ query: { $limit: 1 } }) as UnknownRecord[]
+      const [user] = (await this.app.services.users.find({ query: { $limit: 1 } })) as UnknownRecord[]
       return { ok: !!user }
     } catch (error) {
       logger.error('API - public/status', { error })
@@ -38,7 +38,7 @@ export default {
       create: [],
       update: [],
       patch: [],
-      remove: []
+      remove: [],
     },
     after: {
       all: [],
@@ -47,7 +47,7 @@ export default {
       create: [],
       update: [],
       patch: [],
-      remove: []
-    }
-  }
+      remove: [],
+    },
+  },
 }

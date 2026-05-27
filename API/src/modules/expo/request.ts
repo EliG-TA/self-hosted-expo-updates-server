@@ -25,6 +25,6 @@ export const getRequestParams = ({ query, headers }) => {
     project,
     platform,
     runtimeVersion,
-    releaseChannel
+    releaseChannel,
   }
 }

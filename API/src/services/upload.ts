@@ -1,15 +1,16 @@
 // feathers-blob service
-import type { AppLike, HookContextLike, UnknownRecord, UploadRecord } from '../types'
-import blobService from 'feathers-blob'
-import fsBlob from 'fs-blob-store'
-import multer from 'multer'
 import { hooks } from '@feathersjs/authentication-local'
 import * as Err from '@feathersjs/errors'
-import * as fs from 'fs'
-import * as unzipper from 'unzipper'
 import dauria from 'dauria'
+import blobService from 'feathers-blob'
+import * as fs from 'fs'
+import fsBlob from 'fs-blob-store'
+import multer from 'multer'
+import * as unzipper from 'unzipper'
+
 import { getJSONInfo } from '../modules/expo/asset'
-import { getUpdateId, getUpdateHash } from '../modules/expo/helpers'
+import { getUpdateHash, getUpdateId } from '../modules/expo/helpers'
+import type { AppLike, HookContextLike, UnknownRecord, UploadRecord } from '../types'
 
 const blobStorage = fsBlob('/uploads')
 const multipartMiddleware = multer()
@@ -45,7 +46,7 @@ const createDocument = async (context: UploadHookContext) => {
     throw new Err.GeneralError('Upload failed')
   }
 
-  const upload = await context.app.service('uploads')._create?.({
+  const upload = (await context.app.service('uploads')._create?.({
     createdAt: new Date(),
     originalname: context.params.file.originalname,
     filename: `/uploads/${context.result.id}`,
@@ -55,8 +56,8 @@ const createDocument = async (context: UploadHookContext) => {
     releaseChannel: context.params.headers['release-channel'],
     gitBranch: context.params.headers['git-branch'] || 'Unknown',
     gitCommit: context.params.headers['git-commit'] || 'Unknown',
-    status: 'ready'
-  }) as UploadRecord
+    status: 'ready',
+  })) as UploadRecord
 
   const path = `/updates/${upload.project}/${upload.version}/${upload._id}`
   fs.rmSync(path, { recursive: true, force: true })
@@ -134,7 +135,7 @@ const getHooks = () => ({
     create: [prepareForUpload],
     update: [],
     patch: [],
-    remove: []
+    remove: [],
   },
   after: {
     all: [],
@@ -143,8 +144,8 @@ const getHooks = () => ({
     create: [protect('uri'), createDocument],
     update: [],
     patch: [],
-    remove: []
-  }
+    remove: [],
+  },
 })
 
 export default (app: AppLike & { use(path: string, ...handlers: unknown[]): void }) => {

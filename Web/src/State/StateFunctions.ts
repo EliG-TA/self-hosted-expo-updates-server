@@ -1,7 +1,7 @@
-import state from './index'
 import { FC } from '../Services'
-import { resetStates } from './Functions'
 import { prefetchQueries } from '../Services/QueryCache'
+import { resetStates } from './Functions'
+import state from './index'
 
 interface AuthCredentials extends Record<string, unknown> {
   strategy?: string
@@ -23,7 +23,7 @@ export const jwtLogin = async () => {
 }
 
 export const doLogin = async (auth: AuthCredentials) => {
-  const { accessToken } = await FC.login(auth) as AuthResponse
+  const { accessToken } = (await FC.login(auth)) as AuthResponse
   if (!accessToken) return false
 
   state.user.patchState({ accessToken })

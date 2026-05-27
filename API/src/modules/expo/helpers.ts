@@ -1,23 +1,24 @@
 import * as crypto from 'crypto'
 import * as fs from 'fs'
-import * as path from 'path'
 import mimeModule from 'mime'
+import * as path from 'path'
+
 import type { AssetMetadataOptions, MetadataResult, UnknownRecord, UploadRecord } from '../../types'
 
 const mime = mimeModule
 
-function createHash (file, hashingAlgorithm, encoding) {
+function createHash(file, hashingAlgorithm, encoding) {
   return crypto.createHash(hashingAlgorithm).update(file).digest(encoding)
 }
 
-function getBase64URLEncoding (base64EncodedString) {
+function getBase64URLEncoding(base64EncodedString) {
   return base64EncodedString.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-export const convertToDictionaryItemsRepresentation = (obj: UnknownRecord): Map<string, [unknown, Map<string, unknown>]> => {
-  return new Map(
-    Object.entries(obj).map(([k, v]) => [k, [v, new Map()] as [unknown, Map<string, unknown>]])
-  )
+export const convertToDictionaryItemsRepresentation = (
+  obj: UnknownRecord,
+): Map<string, [unknown, Map<string, unknown>]> => {
+  return new Map(Object.entries(obj).map(([k, v]) => [k, [v, new Map()] as [unknown, Map<string, unknown>]]))
 }
 
 export const signRSASHA256 = (data, privateKey) => {
@@ -41,8 +42,8 @@ export const getPrivateKeyAsync = async () => {
 }
 
 export const getAssetMetadataSync = ({ update, filePath, ext, isLaunchAsset, platform }: AssetMetadataOptions) => {
-  const normalizedFilePath = path.normalize(filePath).replace(/\\/g, '/');
-  const assetFilePath = path.join(update.path, normalizedFilePath);
+  const normalizedFilePath = path.normalize(filePath).replace(/\\/g, '/')
+  const assetFilePath = path.join(update.path, normalizedFilePath)
   const asset = fs.readFileSync(path.resolve(assetFilePath), null)
   const assetHash = getBase64URLEncoding(createHash(asset, 'sha256', 'base64'))
   const key = createHash(asset, 'md5', 'hex')
@@ -62,7 +63,7 @@ export const getAssetMetadataSync = ({ update, filePath, ext, isLaunchAsset, pla
     key,
     fileExtension: `.${keyExtensionSuffix}`,
     contentType,
-    url
+    url,
   }
 }
 

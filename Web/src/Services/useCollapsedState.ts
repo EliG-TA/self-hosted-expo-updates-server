@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useState } from 'react'
 
 /**
  * Persist a boolean collapsed/expanded UI state in localStorage so a user's
@@ -19,13 +19,18 @@ export const useCollapsedState = (key: string, defaultCollapsed = false): [boole
     }
   })
 
-  const setAndPersist = useCallback((next: boolean) => {
-    setCollapsed(next)
-    if (!key) return
-    try {
-      window.localStorage.setItem(key, next ? '1' : '0')
-    } catch (e) { /* storage unavailable / quota; ignore */ }
-  }, [key])
+  const setAndPersist = useCallback(
+    (next: boolean) => {
+      setCollapsed(next)
+      if (!key) return
+      try {
+        window.localStorage.setItem(key, next ? '1' : '0')
+      } catch (e) {
+        /* storage unavailable / quota; ignore */
+      }
+    },
+    [key],
+  )
 
   return [collapsed, setAndPersist]
 }

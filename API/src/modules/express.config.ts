@@ -1,14 +1,16 @@
-import type { AppLike, UnknownRecord } from '../types'
-import * as path from 'path'
-
-import favicon from 'serve-favicon'
 import compress from 'compression'
-import helmetModule from 'helmet'
 import cors from 'cors'
+import helmetModule from 'helmet'
+import * as path from 'path'
+import favicon from 'serve-favicon'
+
+import type { AppLike, UnknownRecord } from '../types'
 
 const helmet = helmetModule
 
-const addWebhookRawBody = (req: { url?: string; rawBody?: Buffer }, res: unknown, buf: Buffer) => { req.url && req.url === '/webhooks' && (req.rawBody = buf) }
+const addWebhookRawBody = (req: { url?: string; rawBody?: Buffer }, res: unknown, buf: Buffer) => {
+  req.url && req.url === '/webhooks' && (req.rawBody = buf)
+}
 
 export interface ExpressLike {
   json(options: UnknownRecord): unknown

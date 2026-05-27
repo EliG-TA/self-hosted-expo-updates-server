@@ -2,7 +2,11 @@ export type UnknownRecord = Record<string, unknown>
 
 interface PatchCollectionLike {
   updateOne(filter: UnknownRecord, update: UnknownRecord): Promise<unknown>
-  findOneAndUpdate(filter: UnknownRecord, update: UnknownRecord, options?: UnknownRecord): Promise<{ value?: unknown } | null>
+  findOneAndUpdate(
+    filter: UnknownRecord,
+    update: UnknownRecord,
+    options?: UnknownRecord,
+  ): Promise<{ value?: unknown } | null>
   find(filter: UnknownRecord): { toArray(): Promise<unknown[]> }
 }
 
@@ -98,7 +102,6 @@ export interface AssetMetadataOptions {
   runtimeVersion?: string
 }
 
-
 export interface IntegrityIssue {
   severity: 'error' | 'warning'
   category: string
@@ -110,7 +113,6 @@ export interface IntegrityResult {
   errorCount: number
   warningCount: number
 }
-
 
 export interface ClientRecord extends UnknownRecord {
   _id?: string

@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
-import ReactDOM from 'react-dom'
 import type { CSSProperties } from 'react'
-
-import { Icon, Text, Flex, Colors } from '..'
+import ReactDOM from 'react-dom'
 import { useMount, useUnmount } from 'react-use'
 import { motion } from 'framer-motion'
+
+import { Colors, Flex, Icon, Text } from '..'
 
 const modalMenu = document.getElementById('modal-menu')
 const modalDiv = document.createElement('div')
@@ -29,52 +29,86 @@ const MENU: {
   background: 'rgba(17, 25, 40, 0.5)',
   miniWidth: 90,
   menuWidth: 300,
-  toggle: null
+  toggle: null,
 }
 
 export const HamburgerMenu = () => {
   return (
     <motion.div
-      whileHover='hovered' whileTap='click' onTap={() => MENU.toggle && MENU.toggle(2)} onHoverStart={() => MENU.toggle && MENU.toggle(1)}
-      variants={{ click: { rotate: '270deg' }, hovered: { rotate: '90deg' } }}
-    >
-      <Icon name='bars' size={30} color={Colors.primary} />
+      whileHover="hovered"
+      whileTap="click"
+      onTap={() => MENU.toggle && MENU.toggle(2)}
+      onHoverStart={() => MENU.toggle && MENU.toggle(1)}
+      variants={{ click: { rotate: '270deg' }, hovered: { rotate: '90deg' } }}>
+      <Icon name="bars" size={30} color={Colors.primary} />
     </motion.div>
   )
 }
 
-const MenuItem = ({ item: { label, icon }, action }: { item: Omit<MenuEntry, 'path' | 'external'>; action: () => void }) => (
+const MenuItem = ({
+  item: { label, icon },
+  action,
+}: {
+  item: Omit<MenuEntry, 'path' | 'external'>
+  action: () => void
+}) => (
   <motion.div
-    onTap={action} style={Styles.menuElement}
-    whileHover='hovered' transition={{ default: { duration: 0.3 } }}
-    variants={{ hovered: { x: 40 } }}
-  >
+    onTap={action}
+    style={Styles.menuElement}
+    whileHover="hovered"
+    transition={{ default: { duration: 0.3 } }}
+    variants={{ hovered: { x: 40 } }}>
     <Flex style={{ minWidth: 70, marginLeft: 10, marginRight: 20 }}>
       <Icon name={icon} size={35} />
     </Flex>
-    <Text color='inherit' size={20} title value={label.toUpperCase()} />
+    <Text color="inherit" size={20} title value={label.toUpperCase()} />
   </motion.div>
 )
 
-export const SlidingMenu = ({ menuItems, menuAction }: { menuItems: MenuEntry[]; menuAction: (path: string, external?: boolean) => void }) => {
+export const SlidingMenu = ({
+  menuItems,
+  menuAction,
+}: {
+  menuItems: MenuEntry[]
+  menuAction: (path: string, external?: boolean) => void
+}) => {
   const [visibility, setVisibility] = useState(0)
 
-  useMount(() => { modalMenu?.appendChild(modalDiv); MENU.toggle = setVisibility })
-  useUnmount(() => { modalMenu?.removeChild(modalDiv); MENU.toggle = null })
+  useMount(() => {
+    modalMenu?.appendChild(modalDiv)
+    MENU.toggle = setVisibility
+  })
+  useUnmount(() => {
+    modalMenu?.removeChild(modalDiv)
+    MENU.toggle = null
+  })
 
   const renderMenu = () => {
     return (
       <motion.div
-        onHoverStart={() => setVisibility(2)} onHoverEnd={() => setVisibility(0)}
+        onHoverStart={() => setVisibility(2)}
+        onHoverEnd={() => setVisibility(0)}
         animate={{
           width: [MENU.miniWidth, MENU.miniWidth, MENU.menuWidth][visibility],
           x: [-MENU.miniWidth, 0, 0][visibility],
-          boxShadow: ['4px 0 78px 0px rgba(100, 100, 100, 0)', '4px 0 78px 0px rgba(100, 100, 100, 0.7)', '4px 0 58px 0px rgba(100, 100, 100, 0.7)'][visibility]
+          boxShadow: [
+            '4px 0 78px 0px rgba(100, 100, 100, 0)',
+            '4px 0 78px 0px rgba(100, 100, 100, 0.7)',
+            '4px 0 58px 0px rgba(100, 100, 100, 0.7)',
+          ][visibility],
         }}
         transition={{ ease: 'easeOut', duration: 0.5 }}
-        style={Styles.menuContainer}
-      >
-        {menuItems.map(({ path, external, ...item }, ind: number) => <MenuItem key={ind} item={item} action={() => { menuAction(path, external); setVisibility(0) }} />)}
+        style={Styles.menuContainer}>
+        {menuItems.map(({ path, external, ...item }, ind: number) => (
+          <MenuItem
+            key={ind}
+            item={item}
+            action={() => {
+              menuAction(path, external)
+              setVisibility(0)
+            }}
+          />
+        ))}
       </motion.div>
     )
   }
@@ -95,7 +129,7 @@ const Styles: Record<string, CSSProperties> = {
     backdropFilter: 'blur(16px) saturate(180%)',
     WebkitBackdropFilter: 'blur(16px) saturate(180%)',
     backgroundColor: MENU.background,
-    borderRight: '1px solid rgba(255, 255, 255, 0.125)'
+    borderRight: '1px solid rgba(255, 255, 255, 0.125)',
   },
   menuElement: {
     display: 'flex',
@@ -103,6 +137,6 @@ const Styles: Record<string, CSSProperties> = {
     cursor: 'pointer',
     backgroundColor: MENU.base,
     color: MENU.accent,
-    height: 60
-  }
+    height: 60,
+  },
 }

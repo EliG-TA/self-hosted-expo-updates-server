@@ -1,8 +1,10 @@
+import './modules/docker/init'
+
 import expressModule from '@feathersjs/express'
 import { feathers } from '@feathersjs/feathers'
+
 import { feathersconfig, logger } from './modules'
 import type { FeathersExpressLike } from './modules/feathers.config'
-import './modules/docker/init'
 
 const express = expressModule as unknown as FeathersExpressLike
 
@@ -11,7 +13,10 @@ app.configure(feathersconfig(express))
 
 const createAdminIfMissing = async () => {
   try {
-    if (!process.env.MONGO_CONN) throw new Error('MONGO_CONN not defined, please run this server under docker compose or set MONGO_CONN env variable')
+    if (!process.env.MONGO_CONN)
+      throw new Error(
+        'MONGO_CONN not defined, please run this server under docker compose or set MONGO_CONN env variable',
+      )
     const result = await app.service('users').find({ query: { username: 'admin' } })
     const [admin] = Array.isArray(result) ? result : (result as { data?: unknown[] })?.data || []
     if (!admin) {

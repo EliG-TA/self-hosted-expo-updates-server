@@ -5,7 +5,7 @@ const options = {
   port: 3000,
   timeout: 2000,
   method: 'GET',
-  path: '/status/'
+  path: '/status/',
 }
 
 let data = ''
@@ -26,7 +26,9 @@ const parseData = () => {
 
 const getData = (response: http.IncomingMessage) => {
   if (response.statusCode !== 200) exit(false, `Bad health check, result ${response.statusCode}`)
-  response.on('data', chunk => { data += chunk })
+  response.on('data', (chunk) => {
+    data += chunk
+  })
   response.on('end', parseData)
 }
 

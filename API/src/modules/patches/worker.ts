@@ -1,6 +1,6 @@
 import type { AppLike, LoggerLike, PatchRecord, UnknownRecord, UploadRecord } from '../../types'
-import { generatePatch, validatePatch, deletePatchFile } from '../expo/patch'
 import { isLaunchBundleHealthy } from '../expo/integrity'
+import { deletePatchFile, generatePatch, validatePatch } from '../expo/patch'
 import loggerDefault from '../logger'
 
 // Direct import (not via ../index) to avoid circular dep:
@@ -31,13 +31,13 @@ const claimNextPendingPatch = async (app: AppLike): Promise<PatchWorkerRecord | 
   const res = await collection.findOneAndUpdate(
     {
       status: 'pending',
-      $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now } }]
+      $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now } }],
     },
     {
       $set: { status: 'generating', lastAttemptAt: now },
-      $inc: { attempts: 1 }
+      $inc: { attempts: 1 },
     },
-    { sort: { createdAt: 1 }, returnDocument: 'after' }
+    { sort: { createdAt: 1 }, returnDocument: 'after' },
   )
   return (res?.value as PatchWorkerRecord | undefined) || null
 }
@@ -46,20 +46,26 @@ const logJob = async (app: AppLike, fields: UnknownRecord & { startedAt?: Date }
   try {
     await app.service('patch-jobs').create({
       ...fields,
-      startedAt: fields.startedAt || new Date()
+      startedAt: fields.startedAt || new Date(),
     })
   } catch (e) {
     logger.warn('patches.worker: failed to write job log', { error: e instanceof Error ? e.message : String(e) })
   }
 }
 
-const markFailed = async (app: AppLike, patch: PatchWorkerRecord, errorMessage: string, jobType = 'generate', startedAt?: Date) => {
+const markFailed = async (
+  app: AppLike,
+  patch: PatchWorkerRecord,
+  errorMessage: string,
+  jobType = 'generate',
+  startedAt?: Date,
+) => {
   const now = new Date()
   await app.service('patches').patch(patch._id, {
     status: 'failed',
     error: errorMessage,
     nextAttemptAt: new Date(now.getTime() + COOLDOWN_MS),
-    completedAt: now
+    completedAt: now,
   })
   await logJob(app, {
     patchId: patch._id,
@@ -72,7 +78,7 @@ const markFailed = async (app: AppLike, patch: PatchWorkerRecord, errorMessage: 
     startedAt: startedAt || now,
     completedAt: now,
     durationMs: now.getTime() - (startedAt ? startedAt.getTime() : now.getTime()),
-    error: errorMessage
+    error: errorMessage,
   })
 }
 
@@ -81,12 +87,18 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
   let fromUpload: UploadRecord
   let toUpload: UploadRecord
   try {
-    ;[fromUpload, toUpload] = await Promise.all([
+    ;[fromUpload, toUpload] = (await Promise.all([
       app.service('uploads').get(patchDoc.fromUploadId),
-      app.service('uploads').get(patchDoc.toUploadId)
-    ]) as [UploadRecord, UploadRecord]
+      app.service('uploads').get(patchDoc.toUploadId),
+    ])) as [UploadRecord, UploadRecord]
   } catch (e) {
-    await markFailed(app, patchDoc, `upload lookup failed: ${e instanceof Error ? e.message : String(e)}`, 'generate', generationStartedAt)
+    await markFailed(
+      app,
+      patchDoc,
+      `upload lookup failed: ${e instanceof Error ? e.message : String(e)}`,
+      'generate',
+      generationStartedAt,
+    )
     return
   }
 
@@ -95,12 +107,24 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
   // (worst case) silently produce semantically-corrupt bytes.
   const fromHealth = isLaunchBundleHealthy(fromUpload, patchDoc.platform)
   if (!fromHealth.healthy) {
-    await markFailed(app, patchDoc, `FROM bundle integrity: ${fromHealth.blocking.map(b => b.message).join('; ')}`, 'generate', generationStartedAt)
+    await markFailed(
+      app,
+      patchDoc,
+      `FROM bundle integrity: ${fromHealth.blocking.map((b) => b.message).join('; ')}`,
+      'generate',
+      generationStartedAt,
+    )
     return
   }
   const toHealth = isLaunchBundleHealthy(toUpload, patchDoc.platform)
   if (!toHealth.healthy) {
-    await markFailed(app, patchDoc, `TO bundle integrity: ${toHealth.blocking.map(b => b.message).join('; ')}`, 'generate', generationStartedAt)
+    await markFailed(
+      app,
+      patchDoc,
+      `TO bundle integrity: ${toHealth.blocking.map((b) => b.message).join('; ')}`,
+      'generate',
+      generationStartedAt,
+    )
     return
   }
 
@@ -109,8 +133,17 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
   try {
     genResult = await generatePatch(fromUpload, toUpload, patchDoc.platform)
   } catch (e) {
-    logger.error('patches.worker: generation failed', { id: patchDoc._id, error: e instanceof Error ? e.message : String(e) })
-    await markFailed(app, patchDoc, `generation: ${e instanceof Error ? e.message : String(e)}`, 'generate', generationStartedAt)
+    logger.error('patches.worker: generation failed', {
+      id: patchDoc._id,
+      error: e instanceof Error ? e.message : String(e),
+    })
+    await markFailed(
+      app,
+      patchDoc,
+      `generation: ${e instanceof Error ? e.message : String(e)}`,
+      'generate',
+      generationStartedAt,
+    )
     return
   }
 
@@ -125,7 +158,7 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
     toUpdateId: patchDoc.toUpdateId,
     startedAt: generationStartedAt,
     completedAt: generationCompletedAt,
-    durationMs: generationCompletedAt.getTime() - generationStartedAt.getTime()
+    durationMs: generationCompletedAt.getTime() - generationStartedAt.getTime(),
   })
 
   await app.service('patches').patch(patchDoc._id, {
@@ -133,7 +166,7 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
     path: genResult.path,
     size: genResult.size,
     targetBundleSize: genResult.targetSize,
-    compressionRatio: genResult.size / genResult.targetSize
+    compressionRatio: genResult.size / genResult.targetSize,
   })
 
   // Validation (magic-bytes + benefit check; client does sha256 verify)
@@ -142,11 +175,17 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
   try {
     validation = await validatePatch({
       patchPath: genResult.path,
-      expectedTargetSize: genResult.targetSize
+      expectedTargetSize: genResult.targetSize,
     })
   } catch (e) {
     deletePatchFile(genResult.path)
-    await markFailed(app, patchDoc, `validation crash: ${e instanceof Error ? e.message : String(e)}`, 'validate', validationStartedAt)
+    await markFailed(
+      app,
+      patchDoc,
+      `validation crash: ${e instanceof Error ? e.message : String(e)}`,
+      'validate',
+      validationStartedAt,
+    )
     return
   }
 
@@ -167,7 +206,7 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
       completedAt: validationCompletedAt,
       durationMs: validationCompletedAt.getTime() - validationStartedAt.getTime(),
       reason: isNotBeneficial ? 'not-beneficial' : undefined,
-      error: isNotBeneficial ? undefined : validation.reason
+      error: isNotBeneficial ? undefined : validation.reason,
     })
     if (isNotBeneficial) {
       // Permanent terminal state: bundles unchanged → result would be identical.
@@ -177,7 +216,7 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
         error: validation.reason,
         nextAttemptAt: null,
         path: null,
-        completedAt: validationCompletedAt
+        completedAt: validationCompletedAt,
       })
     } else {
       await app.service('patches').patch(patchDoc._id, {
@@ -185,7 +224,7 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
         error: validation.reason,
         nextAttemptAt: new Date(Date.now() + COOLDOWN_MS),
         path: null,
-        completedAt: validationCompletedAt
+        completedAt: validationCompletedAt,
       })
     }
     return
@@ -195,7 +234,7 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
     status: 'ready',
     completedAt: validationCompletedAt,
     durationMs: validationCompletedAt.getTime() - generationStartedAt.getTime(),
-    error: null
+    error: null,
   })
   await logJob(app, {
     patchId: patchDoc._id,
@@ -207,12 +246,12 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
     toUpdateId: patchDoc.toUpdateId,
     startedAt: validationStartedAt,
     completedAt: validationCompletedAt,
-    durationMs: validationCompletedAt.getTime() - validationStartedAt.getTime()
+    durationMs: validationCompletedAt.getTime() - validationStartedAt.getTime(),
   })
   logger.info('patches.worker: patch ready', {
     id: patchDoc._id,
     size: genResult.size,
-    ratio: genResult.size / genResult.targetSize
+    ratio: genResult.size / genResult.targetSize,
   })
 }
 
@@ -241,7 +280,7 @@ const cleanupObsoletePatches = async (app: AppLike) => {
     logger.warn('patches.worker.cleanup: query failed', { error: e instanceof Error ? e.message : String(e) })
     return
   }
-  const docs = await cursor.toArray() as PatchWorkerRecord[]
+  const docs = (await cursor.toArray()) as PatchWorkerRecord[]
   for (const doc of docs) {
     const startedAt = new Date()
     try {
@@ -258,10 +297,13 @@ const cleanupObsoletePatches = async (app: AppLike) => {
         startedAt,
         completedAt: new Date(),
         durationMs: 0,
-        reason: 'obsolete-7d'
+        reason: 'obsolete-7d',
       })
     } catch (e) {
-      logger.warn('patches.worker.cleanup: failed to remove', { id: doc._id, error: e instanceof Error ? e.message : String(e) })
+      logger.warn('patches.worker.cleanup: failed to remove', {
+        id: doc._id,
+        error: e instanceof Error ? e.message : String(e),
+      })
     }
   }
 }
@@ -284,8 +326,14 @@ export const start = (app: AppLike) => {
 }
 
 export const stop = () => {
-  if (tickHandle) { clearInterval(tickHandle); tickHandle = null }
-  if (cleanupHandle) { clearInterval(cleanupHandle); cleanupHandle = null }
+  if (tickHandle) {
+    clearInterval(tickHandle)
+    tickHandle = null
+  }
+  if (cleanupHandle) {
+    clearInterval(cleanupHandle)
+    cleanupHandle = null
+  }
 }
 
-export { tick, cleanupObsoletePatches, COOLDOWN_MS, OBSOLETE_RETENTION_MS }
+export { cleanupObsoletePatches, COOLDOWN_MS, OBSOLETE_RETENTION_MS, tick }

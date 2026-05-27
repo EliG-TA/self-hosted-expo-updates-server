@@ -1,14 +1,13 @@
-import FormData from 'form-data'
 import * as Err from '@feathersjs/errors'
+import FormData from 'form-data'
 import { serializeDictionary } from 'structured-headers'
-import type { AppLike, UnknownRecord, UploadRecord } from '../../types'
-import { getRequestParams } from './request'
-import { getMetadataSync, getAssetMetadataSync, signRSASHA256, convertToDictionaryItemsRepresentation } from './helpers'
 
+import { convertToDictionaryItemsRepresentation, getAssetMetadataSync, getMetadataSync, signRSASHA256 } from './helpers'
+import { getRequestParams } from './request'
 
 const getSignature = async ({ headers, manifest, privateKey }) => {
   const expectSignatureHeader = !!headers['expo-expect-signature']
-  if (!expectSignatureHeader) return ({})
+  if (!expectSignatureHeader) return {}
 
   if (!privateKey) {
     throw new Err.BadRequest('Code signing requested but no key supplied when starting server.')
@@ -17,20 +16,17 @@ const getSignature = async ({ headers, manifest, privateKey }) => {
   const hashSignature = signRSASHA256(manifestString, privateKey)
   const dictionary = convertToDictionaryItemsRepresentation({
     sig: hashSignature,
-    keyid: 'main'
+    keyid: 'main',
   })
-  return ({ 'expo-signature': serializeDictionary(dictionary) })
+  return { 'expo-signature': serializeDictionary(dictionary) }
 }
 
 export const hanldeManifestData = async (app, { query, headers }) => {
-  const {
-    project,
-    platform,
-    runtimeVersion,
-    releaseChannel
-  } = getRequestParams({ query, headers })
+  const { project, platform, runtimeVersion, releaseChannel } = getRequestParams({ query, headers })
 
-  const [update] = await app.service('uploads').find({ query: { project, version: runtimeVersion, releaseChannel, status: 'released' } })
+  const [update] = await app
+    .service('uploads')
+    .find({ query: { project, version: runtimeVersion, releaseChannel, status: 'released' } })
   if (!update) return { message: 'No uploads found' }
 
   const application = await app.service('apps').get(update.project)
@@ -51,8 +47,8 @@ export const hanldeManifestData = async (app, { query, headers }) => {
           ext: asset.ext,
           runtimeVersion,
           platform,
-          isLaunchAsset: false
-        })
+          isLaunchAsset: false,
+        }),
       ),
       launchAsset: getAssetMetadataSync({
         update,
@@ -60,18 +56,18 @@ export const hanldeManifestData = async (app, { query, headers }) => {
         isLaunchAsset: true,
         runtimeVersion,
         platform,
-        ext: null
+        ext: null,
       }),
       metadata: {},
       extra: {
-        expoClient: update.appJson
-      }
+        expoClient: update.appJson,
+      },
     }
 
-    const assetRequestHeaders = {};
-    [...manifest.assets, manifest.launchAsset].forEach((asset) => {
+    const assetRequestHeaders = {}
+    ;[...manifest.assets, manifest.launchAsset].forEach((asset) => {
       assetRequestHeaders[asset.key] = {
-        'test-header': 'test-header-value'
+        'test-header': 'test-header-value',
       }
     })
 
@@ -81,18 +77,18 @@ export const hanldeManifestData = async (app, { query, headers }) => {
       contentType: 'application/json',
       header: {
         'content-type': 'application/json; charset=utf-8',
-        ...(await getSignature({ headers, manifest, privateKey: application.privateKey }))
-      }
+        ...(await getSignature({ headers, manifest, privateKey: application.privateKey })),
+      },
     })
 
     form.append('extensions', JSON.stringify({ assetRequestHeaders }), {
-      contentType: 'application/json'
+      contentType: 'application/json',
     })
 
     return {
       type: 'manifest',
       formBoundary: form.getBoundary(),
-      formData: form.getBuffer().toString()
+      formData: form.getBuffer().toString(),
     }
   } catch (error) {
     throw new Err.BadRequest(JSON.stringify(error))

@@ -1,5 +1,5 @@
 declare module 'feathers-blob' {
-  import type { AppService, UnknownRecord } from './types'
+  import type { AppService } from './types'
 
   interface BlobServiceOptions {
     Model: unknown

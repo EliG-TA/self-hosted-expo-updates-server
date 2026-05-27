@@ -1,20 +1,19 @@
-import type { AppLike, UnknownRecord } from '../types'
 import s from '../hooks/security'
-
+import type { AppLike, UnknownRecord } from '../types'
 
 class Service {
   options: UnknownRecord
   app: AppLike
 
-  constructor (options?: UnknownRecord) {
+  constructor(options?: UnknownRecord) {
     this.options = options || {}
   }
 
-  setup (app: AppLike) {
+  setup(app: AppLike) {
     this.app = app
   }
 
-  async create (data?: unknown, params?: UnknownRecord) {
+  async create(data?: unknown, params?: UnknownRecord) {
     return 'OK'
   }
 }
@@ -30,7 +29,7 @@ export default {
       create: [],
       update: [],
       patch: [],
-      remove: []
+      remove: [],
     },
     after: {
       all: [],
@@ -39,9 +38,9 @@ export default {
       create: [],
       update: [],
       patch: [],
-      remove: []
-    }
-  }
+      remove: [],
+    },
+  },
 }
 
 export { Service }

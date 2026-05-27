@@ -1,4 +1,4 @@
-import { Card, Text, Input } from '../../Components'
+import { Card, Input, Text } from '../../Components'
 import { FC } from '../../Services'
 
 export const getAndroidMetadata = ({ _id, certificate = '' }) => {
@@ -60,18 +60,30 @@ export const getUpdateAppjson = ({ _id, certificate = '' }) => {
 
 export const ConfigApp = ({ app }) => {
   return (
-    <Card title='APP CONFIGURATION' collapsable collapsed fadeIn style={{ padding: 20, width: '100%', maxWidth: 900, marginTop: 40 }}>
-
-      <Text value='Expo Updates configuration in app.json, runtimeVersion is required.' style={{ marginTop: 40 }} />
+    <Card
+      title="APP CONFIGURATION"
+      collapsable
+      collapsed
+      fadeIn
+      style={{ padding: 20, width: '100%', maxWidth: 900, marginTop: 40 }}>
+      <Text value="Expo Updates configuration in app.json, runtimeVersion is required." style={{ marginTop: 40 }} />
 
       <Input multiline rows={9} useState={[getUpdateAppjson(app), () => null]} style={{ marginTop: 10, width: 800 }} />
 
-      <Text value='For ejected apps run "expo prebuild" to setup automatically native iOS and Android settings after you set app.json, or use the generated code below.' style={{ marginTop: 10 }} />
+      <Text
+        value='For ejected apps run "expo prebuild" to setup automatically native iOS and Android settings after you set app.json, or use the generated code below.'
+        style={{ marginTop: 10 }}
+      />
 
-      <Text value='Expo Updates config in android-manifest.xml' style={{ marginTop: 40 }} />
-      <Input multiline rows={10} useState={[getAndroidMetadata(app), () => null]} style={{ marginTop: 10, width: 800 }} />
+      <Text value="Expo Updates config in android-manifest.xml" style={{ marginTop: 40 }} />
+      <Input
+        multiline
+        rows={10}
+        useState={[getAndroidMetadata(app), () => null]}
+        style={{ marginTop: 10, width: 800 }}
+      />
 
-      <Text value='Expo Updates config in Expo.plist' style={{ marginTop: 40 }} />
+      <Text value="Expo Updates config in Expo.plist" style={{ marginTop: 40 }} />
       <Input multiline rows={10} useState={[getIOSMetadata(app), () => null]} style={{ marginTop: 10, width: 800 }} />
     </Card>
   )

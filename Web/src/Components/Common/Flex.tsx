@@ -1,8 +1,29 @@
 import React from 'react'
 import type { CSSProperties } from 'react'
+
 import type { FlexProps } from '../../types'
 
-export function Flex ({ style, row, children, js, jb, je, jse, jc, flexrow, as, ae, width, height, fw, fh, bg, wrap, black, ...props }: FlexProps) {
+export function Flex({
+  style,
+  row,
+  children,
+  js,
+  jb,
+  je,
+  jse,
+  jc,
+  flexrow,
+  as,
+  ae,
+  width,
+  height,
+  fw,
+  fh,
+  bg,
+  wrap,
+  black,
+  ...props
+}: FlexProps) {
   const flexStyle: CSSProperties = {
     display: 'flex',
     flexDirection: row ? 'row' : 'column',
@@ -23,13 +44,10 @@ export function Flex ({ style, row, children, js, jb, je, jse, jc, flexrow, as, 
     ...(height ? { height } : {}),
     ...(black ? { backgroundColor: '#1e1e1e' } : {}),
     ...(bg ? { backgroundColor: bg === true ? 'red' : bg } : {}),
-    ...style
+    ...style,
   }
   return (
-    <div
-      style={flexStyle}
-      {...props}
-    >
+    <div style={flexStyle} {...props}>
       {children}
     </div>
   )

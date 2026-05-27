@@ -1,15 +1,16 @@
-import { Flex, Spinner } from '../../Components'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useCQuery } from '../../Services'
-import { useState, useEffect } from 'react'
-import { ConfigServer } from './ConfigServer'
-import { ConfigApp } from './ConfigApp'
-import { ReleaseManager } from './ReleaseManager'
-import { PublishedUpdates } from './PublishedUpdates'
-import { BsdiffManager } from './BsdiffManager'
-import type { AppRecord, CertificateRecord } from '../../types'
 
-export default function App () {
+import { Flex, Spinner } from '../../Components'
+import { useCQuery } from '../../Services'
+import type { AppRecord, CertificateRecord } from '../../types'
+import { BsdiffManager } from './BsdiffManager'
+import { ConfigApp } from './ConfigApp'
+import { ConfigServer } from './ConfigServer'
+import { PublishedUpdates } from './PublishedUpdates'
+import { ReleaseManager } from './ReleaseManager'
+
+export default function App() {
   const { appId = '' } = useParams()
   const { data: app, isSuccess } = useCQuery<AppRecord & CertificateRecord>(['app', appId])
   const [appUpdate, setAppUpdate] = useState<AppRecord & CertificateRecord>(app || { _id: appId })

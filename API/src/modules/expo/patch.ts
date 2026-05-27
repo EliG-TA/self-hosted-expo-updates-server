@@ -1,9 +1,8 @@
+import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
-import * as crypto from 'crypto'
-import type { UploadRecord } from '../../types'
-import { getMetadataSync } from './helpers'
 
+import { getMetadataSync } from './helpers'
 
 const PATCH_BENEFIT_RATIO = 0.75
 const PATCH_DIR_NAME = '_patches'
@@ -13,7 +12,7 @@ let hdiffPromise = null
 const loadHdiff = () => {
   if (!hdiffPromise) {
     // @hot-updater/bsdiff is ESM-only; load it via dynamic import from CommonJS.
-    hdiffPromise = import('@hot-updater/bsdiff').then(m => m.hdiff)
+    hdiffPromise = import('@hot-updater/bsdiff').then((m) => m.hdiff)
   }
   return hdiffPromise
 }
@@ -63,7 +62,7 @@ export const generatePatch = async (fromUpload, toUpload, platform) => {
     size: patchBuf.length,
     targetSize: toBuf.length,
     targetHash: sha256(toBuf),
-    fromHash: sha256(fromBuf)
+    fromHash: sha256(fromBuf),
   }
 }
 
@@ -96,7 +95,7 @@ export const validatePatch = async ({ patchPath, expectedTargetSize }) => {
   if (!patchBuf.subarray(0, BSDIFF_MAGIC.length).equals(BSDIFF_MAGIC)) {
     return {
       ok: false,
-      reason: `magic mismatch: expected BSDIFF40 header`
+      reason: `magic mismatch: expected BSDIFF40 header`,
     }
   }
 
@@ -105,7 +104,7 @@ export const validatePatch = async ({ patchPath, expectedTargetSize }) => {
     return {
       ok: false,
       reason: `not-beneficial: patch is ${(benefitRatio * 100).toFixed(1)}% of target (threshold ${PATCH_BENEFIT_RATIO * 100}%)`,
-      notBeneficial: true
+      notBeneficial: true,
     }
   }
 
@@ -129,9 +128,11 @@ export const sumPatchesSize = (toUpload) => {
   for (const entry of fs.readdirSync(dir)) {
     try {
       total += fs.statSync(path.join(dir, entry)).size
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      /* ignore */
+    }
   }
   return total
 }
 
-export { sha256, PATCH_BENEFIT_RATIO, PATCH_DIR_NAME }
+export { PATCH_BENEFIT_RATIO, PATCH_DIR_NAME, sha256 }
