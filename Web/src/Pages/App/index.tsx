@@ -7,14 +7,15 @@ import { ConfigApp } from './ConfigApp'
 import { ReleaseManager } from './ReleaseManager'
 import { PublishedUpdates } from './PublishedUpdates'
 import { BsdiffManager } from './BsdiffManager'
+import type { AppRecord, CertificateRecord } from '../../types'
 
 export default function App () {
   const { appId = '' } = useParams()
-  const { data: app, isSuccess } = useCQuery(['app', appId])
-  const [appUpdate, setAppUpdate] = useState(app || {})
+  const { data: app, isSuccess } = useCQuery<AppRecord & CertificateRecord>(['app', appId])
+  const [appUpdate, setAppUpdate] = useState<AppRecord & CertificateRecord>(app || { _id: appId })
 
   useEffect(() => {
-    setAppUpdate(app || {})
+    setAppUpdate(app || { _id: appId })
   }, [appId, app])
 
   if (!isSuccess) return <Spinner />

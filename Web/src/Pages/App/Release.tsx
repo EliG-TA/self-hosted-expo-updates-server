@@ -4,13 +4,26 @@ import { Dialog } from 'primereact/dialog'
 import { FC, invalidateQuery } from '../../Services'
 import { UpdateInfo } from './UpdateInfo'
 import { Flex, Button, Text, Spinner } from '../../Components'
+import type { IntegrityRecord, ServiceOutcome, UploadRecord } from '../../types'
 
-export const Release = ({ update, onHide }: any) => {
+interface ReleaseProps {
+  update: UploadRecord | null
+  onHide: () => void
+  releaseState?: unknown
+}
+
+interface IntegrityResponse {
+  problems?: IntegrityRecord[]
+}
+
+const emptyIntegrity: IntegrityRecord = { errorCount: 0, warningCount: 0, issues: [] }
+
+export const Release = ({ update, onHide }: ReleaseProps) => {
   const [releasing, setRelasing] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [activeTab, setActiveTab] = useState(UpdateInfo.OVERVIEW_TAB_INDEX)
-  const [integrity, setIntegrity] = useState(null) // { errorCount, warningCount, issues } | null
+  const [integrity, setIntegrity] = useState<IntegrityRecord | null>(null)
   const [integrityLoading, setIntegrityLoading] = useState(false)
 
   // Reset to the Overview tab + re-check integrity whenever a different
@@ -23,10 +36,11 @@ export const Release = ({ update, onHide }: any) => {
     setIntegrityLoading(true)
     FC.client.service('utils').update('checkIntegrity', { uploadId: update._id })
       .then(res => {
-        const row = res?.problems?.[0]
-        setIntegrity(row || { errorCount: 0, warningCount: 0, issues: [] })
+        const typed = res as IntegrityResponse
+        const row = typed?.problems?.[0]
+        setIntegrity(row || emptyIntegrity)
       })
-      .catch(() => setIntegrity({ errorCount: 0, warningCount: 0, issues: [] }))
+      .catch(() => setIntegrity(emptyIntegrity))
       .finally(() => setIntegrityLoading(false))
   }, [update?._id])
 
@@ -34,12 +48,12 @@ export const Release = ({ update, onHide }: any) => {
   const isObsolete = update?.status === 'obsolete'
   const hasIntegrityErrors = (integrity?.errorCount || 0) > 0
 
-  const handleAction = (action) => async () => {
+  const handleAction = (action: string) => async () => {
     setDeleting(false)
     setConfirming(false)
     setRelasing(true)
     try {
-      const outcome = await FC.client.service('utils').update(action, { uploadId: update._id })
+      const outcome = await FC.client.service('utils').update(action, { uploadId: update._id }) as ServiceOutcome
       if (!outcome || outcome?.error) throw new Error(outcome?.error || 'Unknown error')
 
       window.toast.show({

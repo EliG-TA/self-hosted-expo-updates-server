@@ -5,8 +5,10 @@ import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { InputSwitch } from 'primereact/inputswitch'
 import moment from 'moment'
+import type { AppRecord, ListResult, PatchJobRecord, PatchRecord, ServiceOutcome } from '../../types'
+import { listFromResult } from '../../types'
 
-const fmtBytes = (n) => {
+const fmtBytes = (n?: number) => {
   if (!n) return '0 B'
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
@@ -14,13 +16,13 @@ const fmtBytes = (n) => {
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
-const fmtMs = (ms) => {
+const fmtMs = (ms?: number) => {
   if (!ms && ms !== 0) return '—'
   if (ms < 1000) return `${ms} ms`
   return `${(ms / 1000).toFixed(2)} s`
 }
 
-const fmtDate = (d) => d ? moment(d).format('YYYY-MM-DD HH:mm:ss') : '—'
+const fmtDate = (d?: string | Date) => d ? moment(d).format('YYYY-MM-DD HH:mm:ss') : '—'
 
 const JOB_STATUS_COLORS = {
   queued: '#9e9e9e',
@@ -36,7 +38,7 @@ const JOB_TYPE_COLORS = {
   purge: '#ff6b6b'
 }
 
-const Pill = ({ value, color }) => (
+const Pill = ({ value, color }: { value?: string | number, color?: string }) => (
   <span style={{
     padding: '2px 8px',
     borderRadius: 4,
@@ -47,24 +49,24 @@ const Pill = ({ value, color }) => (
   }}>{value}</span>
 )
 
-export const BsdiffManager = ({ app }) => {
+export const BsdiffManager = ({ app }: { app: AppRecord }) => {
   const project = app?._id
   const [saving, setSaving] = useState(false)
   const [purging, setPurging] = useState(false)
 
-  const { data: patches, isSuccess: patchesReady } = useCQuery(['patches', project])
-  const { data: jobs, isSuccess: jobsReady } = useCQuery(['patchJobs', project])
+  const { data: patches, isSuccess: patchesReady } = useCQuery<ListResult<PatchRecord>>(['patches', project])
+  const { data: jobs, isSuccess: jobsReady } = useCQuery<ListResult<PatchJobRecord>>(['patchJobs', project])
 
   const stats = useMemo(() => {
-    const list = patches?.data || patches || []
+    const list = listFromResult(patches)
     const own = list.filter(p => p.project === project)
     const totalSize = own.reduce((acc, p) => acc + (p.size || 0), 0)
     const totalServed = own.reduce((acc, p) => acc + (p.servedCount || 0), 0)
-    const byStatus = own.reduce((acc, p) => { acc[p.status] = (acc[p.status] || 0) + 1; return acc }, {})
+    const byStatus = own.reduce<Record<string, number>>((acc, p) => { const status = p.status || 'unknown'; acc[status] = (acc[status] || 0) + 1; return acc }, {})
     return { count: own.length, totalSize, totalServed, byStatus }
   }, [patches, project])
 
-  const handleToggle = async (value) => {
+  const handleToggle = async (value: boolean) => {
     setSaving(true)
     try {
       await FC.client.service('apps').patch(project, { bsdiffEnabled: value })
@@ -80,7 +82,7 @@ export const BsdiffManager = ({ app }) => {
     if (!window.confirm('Delete ALL patches for this app? This cannot be undone.')) return
     setPurging(true)
     try {
-      const res = await FC.client.service('patches').update('purgeAll', { project })
+      const res = await FC.client.service('patches').update('purgeAll', { project }) as ServiceOutcome
       invalidateQuery(['patches', 'patchJobs', 'diskUsage'])
       window.toast?.show({ severity: 'info', summary: `Purged ${res?.removed || 0} patches` })
     } catch (e) {
@@ -90,7 +92,7 @@ export const BsdiffManager = ({ app }) => {
   }
 
   const projectJobs = useMemo(() => {
-    const list = jobs?.data || jobs || []
+    const list = listFromResult(jobs)
     return list.filter(j => !project || j.project === project || j.project === null)
   }, [jobs, project])
 

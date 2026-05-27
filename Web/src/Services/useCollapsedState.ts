@@ -7,7 +7,7 @@ import { useState, useCallback } from 'react'
  * Usage:
  *   const [collapsed, setCollapsed] = useCollapsedState('published:app:53.1', false)
  */
-export const useCollapsedState = (key, defaultCollapsed = false) => {
+export const useCollapsedState = (key: string, defaultCollapsed = false): [boolean, (next: boolean) => void] => {
   const [collapsed, setCollapsed] = useState(() => {
     if (!key) return defaultCollapsed
     try {
@@ -19,7 +19,7 @@ export const useCollapsedState = (key, defaultCollapsed = false) => {
     }
   })
 
-  const setAndPersist = useCallback((next) => {
+  const setAndPersist = useCallback((next: boolean) => {
     setCollapsed(next)
     if (!key) return
     try {

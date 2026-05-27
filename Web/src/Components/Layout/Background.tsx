@@ -1,8 +1,9 @@
 import React from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { background } from '../../Resources'
 
-function Background ({ children }: any) {
-  const backgroundStyle: any = {
+function Background ({ children }: { children?: ReactNode }) {
+  const backgroundStyle: CSSProperties = {
     position: 'absolute',
     top: 0,
     bottom: 0,

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect } from 'react'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -9,8 +8,10 @@ import { FC, useCQuery, invalidateQuery } from '../../Services'
 import { Button, Card, Flex, Spinner, Text, Colors, StatusPill, ConfirmDialog } from '../../Components'
 import { Release } from './Release'
 import { UpdateInstructions } from './UpdateInstructions'
+import type { AppRecord, IntegrityIssue, ListResult, ServiceOutcome, UploadRecord, UnknownRecord } from '../../types'
+import { listFromResult } from '../../types'
 
-const fmtBytes = (n) => {
+const fmtBytes = (n?: number) => {
   if (!n) return '0 B'
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
@@ -30,7 +31,35 @@ const CATEGORY_LABELS = {
   db: 'DB fields'
 }
 
-const FilterChip = ({ label, active, onClick, color }) => (
+interface IntegrityProblem extends UploadRecord {
+  issues: Array<IntegrityIssue & { category?: string }>
+}
+
+interface IntegrityResult extends UnknownRecord {
+  checkedCount?: number
+  errorRowCount?: number
+  warningRowCount?: number
+  problemCount: number
+  problems: IntegrityProblem[]
+}
+
+interface CleanupResult extends ServiceOutcome {
+  count?: number
+  computedForDays: number
+  totalBytes?: number
+  candidates?: UploadRecord[]
+  zipsRemoved?: number
+  zipsMissing?: number
+  dirsRemoved?: number
+  dirsMissing?: number
+  errors?: unknown[]
+}
+
+const isCleanupResult = (value: unknown): value is Omit<CleanupResult, 'computedForDays'> => value !== null && typeof value === 'object'
+
+const categoryLabel = (cat: string) => CATEGORY_LABELS[cat as keyof typeof CATEGORY_LABELS] || cat
+
+const FilterChip = ({ label, active, onClick, color }: { label: string, active: boolean, onClick: () => void, color: string }) => (
   <span
     onClick={onClick}
     style={{
@@ -47,19 +76,19 @@ const FilterChip = ({ label, active, onClick, color }) => (
   >{label}</span>
 )
 
-const IntegrityCheckSection = ({ project, onOpenUpload }) => {
+const IntegrityCheckSection = ({ project, onOpenUpload }: { project: string, onOpenUpload?: (upload: UploadRecord) => void }) => {
   const [checking, setChecking] = useState(false)
-  const [result, setResult] = useState(null)
-  const [opening, setOpening] = useState(null)
+  const [result, setResult] = useState<IntegrityResult | null>(null)
+  const [opening, setOpening] = useState<string | null>(null)
   const [showErrors, setShowErrors] = useState(true)
   const [showWarnings, setShowWarnings] = useState(true)
-  const [categoryFilter, setCategoryFilter] = useState(new Set()) // empty = show all
+  const [categoryFilter, setCategoryFilter] = useState<Set<string>>(new Set()) // empty = show all
 
   const handleCheck = async () => {
     setChecking(true)
     setResult(null)
     try {
-      const res = await FC.client.service('utils').update('checkIntegrity', { project })
+      const res = await FC.client.service('utils').update('checkIntegrity', { project }) as IntegrityResult
       setResult(res)
     } catch (e) {
       window.toast?.show({ severity: 'error', summary: 'Integrity check failed', detail: e.message })
@@ -67,7 +96,7 @@ const IntegrityCheckSection = ({ project, onOpenUpload }) => {
     setChecking(false)
   }
 
-  const toggleCategory = (cat) => {
+  const toggleCategory = (cat: string) => {
     const next = new Set(categoryFilter)
     if (next.has(cat)) next.delete(cat)
     else next.add(cat)
@@ -77,9 +106,9 @@ const IntegrityCheckSection = ({ project, onOpenUpload }) => {
   // Categories actually present in the current result — drives which
   // category chips render at all (no point offering 'hash' if no upload
   // has a hash drift right now).
-  const presentCategories = new Set()
+  const presentCategories = new Set<string>()
   for (const p of (result?.problems || [])) {
-    for (const iss of p.issues) presentCategories.add(iss.category)
+    for (const iss of p.issues) iss.category && presentCategories.add(iss.category)
   }
 
   // Filters select which upload rows to show — an upload is included if at
@@ -87,7 +116,7 @@ const IntegrityCheckSection = ({ project, onOpenUpload }) => {
   // The Issues column itself always renders every issue of the upload, so
   // the user sees the full context (and can decide to widen the filter to
   // inspect related but currently-filtered-out problems).
-  const rowMatches = (p) => p.issues.some(iss => {
+  const rowMatches = (p: IntegrityProblem) => p.issues.some(iss => {
     if (iss.severity === 'error' && !showErrors) return false
     if (iss.severity === 'warning' && !showWarnings) return false
     if (categoryFilter.size > 0 && !categoryFilter.has(iss.category)) return false
@@ -95,11 +124,11 @@ const IntegrityCheckSection = ({ project, onOpenUpload }) => {
   })
   const filteredProblems = (result?.problems || []).filter(rowMatches)
 
-  const handleOpen = async (row) => {
+  const handleOpen = async (row: UploadRecord) => {
     if (!row?._id) return
     setOpening(row._id)
     try {
-      const upload = await FC.client.service('uploads').get(row._id)
+      const upload = await FC.client.service('uploads').get(row._id) as UploadRecord
       onOpenUpload?.(upload)
     } catch (e) {
       window.toast?.show({ severity: 'error', summary: 'Failed to load upload', detail: e.message })
@@ -168,7 +197,7 @@ const IntegrityCheckSection = ({ project, onOpenUpload }) => {
               {[...presentCategories].sort().map(cat => (
                 <FilterChip
                   key={cat}
-                  label={CATEGORY_LABELS[cat] || cat}
+                  label={categoryLabel(cat)}
                   active={categoryFilter.has(cat)}
                   color={Colors.primary}
                   onClick={() => toggleCategory(cat)}
@@ -258,15 +287,15 @@ const IntegrityCheckSection = ({ project, onOpenUpload }) => {
   )
 }
 
-const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
+const OldUpdatesCleanupSection = ({ project, onOpenUpload }: { project: string, onOpenUpload?: (upload: UploadRecord) => void }) => {
   const [olderThanDays, setOlderThanDays] = useState(90)
   const [calculating, setCalculating] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [result, setResult] = useState(null) // { count, totalBytes, olderThanDays } when computed
-  const [opening, setOpening] = useState(null) // uploadId currently being fetched for the dialog
+  const [result, setResult] = useState<CleanupResult | null>(null)
+  const [opening, setOpening] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
 
-  const handleCalculate = async (daysOverride) => {
+  const handleCalculate = async (daysOverride?: number) => {
     const days = daysOverride ?? olderThanDays
     setCalculating(true)
     setResult(null)
@@ -274,7 +303,7 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
       const res = await FC.client.service('utils').get('oldUpdatesCleanupCandidates', {
         query: { project, olderThanDays: days }
       })
-      setResult({ ...res, computedForDays: days })
+      if (isCleanupResult(res)) setResult({ ...res, computedForDays: days })
     } catch (e) {
       window.toast?.show({ severity: 'error', summary: 'Calculation failed', detail: e.message })
     }
@@ -289,11 +318,11 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project])
 
-  const handleOpenCandidate = async (candidate) => {
+  const handleOpenCandidate = async (candidate: UploadRecord) => {
     if (!candidate?._id) return
     setOpening(candidate._id)
     try {
-      const upload = await FC.client.service('uploads').get(candidate._id)
+      const upload = await FC.client.service('uploads').get(candidate._id) as UploadRecord
       onOpenUpload?.(upload)
     } catch (e) {
       window.toast?.show({ severity: 'error', summary: 'Failed to load upload', detail: e.message })
@@ -310,7 +339,7 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
       const res = await FC.client.service('utils').update('cleanupOldUpdates', {
         project,
         olderThanDays: computedForDays
-      })
+      }) as CleanupResult
       invalidateQuery(['uploads', 'published', 'diskUsage'])
       const errorCount = res?.errors?.length || 0
       const detailLines = [
@@ -413,9 +442,9 @@ const OldUpdatesCleanupSection = ({ project, onOpenUpload }) => {
         {result && result.count > 0 && (
           <div style={{ width: '100%', marginTop: 16 }}>
             <DataTable
-              value={result.candidates}
+              value={result.candidates || []}
               size='small'
-              paginator={result.candidates.length > 10}
+              paginator={(result.candidates || []).length > 10}
               rows={10}
               sortField='createdAt'
               sortOrder={1}
@@ -662,9 +691,10 @@ const OrphanFilesSection = ({ project }) => {
   )
 }
 
-export const ReleaseManager = ({ app }) => {
-  const { data: uploads, isSuccess } = useCQuery(['uploads', app._id])
-  const [update, setUpdate] = useState(null)
+export const ReleaseManager = ({ app }: { app: AppRecord }) => {
+  const { data: uploadsResult, isSuccess } = useCQuery<ListResult<UploadRecord>>(['uploads', app._id])
+  const uploads = listFromResult(uploadsResult)
+  const [update, setUpdate] = useState<UploadRecord | null>(null)
   const [releasing, setRelasing] = useState(false)
 
   if (!isSuccess) return <Spinner />

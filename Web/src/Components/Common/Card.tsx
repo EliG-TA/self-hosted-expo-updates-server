@@ -1,15 +1,34 @@
 import React, { useState, useEffect } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { motion } from 'framer-motion'
+import type { MotionStyle } from 'framer-motion'
 import { Text, Flex, Icon } from '..'
 import { Colors } from './Colors'
 
 const transition = { default: { duration: 0.4 } }
 
-export function Card ({ fadeIn, collapsable, title, titleCollapsed, titleStyle, collapsed, children, style, customHeader, onExpand, onToggle }: any) {
-  const [state, setState] = useState('closed')
+interface CardProps {
+  fadeIn?: boolean
+  fadein?: boolean
+  collapsable?: boolean
+  title?: string
+  titleCollapsed?: string
+  titleStyle?: CSSProperties
+  collapsed?: boolean
+  children?: ReactNode
+  style?: CSSProperties
+  customHeader?: ReactNode
+  onExpand?: () => void
+  onToggle?: (collapsed: boolean) => void
+}
+
+type CardState = 'open' | 'closed'
+
+export function Card ({ fadeIn, fadein, collapsable, title, titleCollapsed, titleStyle, collapsed, children, style, customHeader, onExpand, onToggle }: CardProps) {
+  const [state, setState] = useState<CardState>('closed')
   const isCollapsed = state === 'closed'
 
-  const toggleCollapse = (newState?: any) => {
+  const toggleCollapse = (newState?: CardState) => {
     const applyNewState = newState || (isCollapsed ? 'open' : 'closed')
     setState(applyNewState)
     applyNewState === 'open' && onExpand && onExpand()
@@ -18,14 +37,14 @@ export function Card ({ fadeIn, collapsable, title, titleCollapsed, titleStyle, 
 
   useEffect(() => { collapsable && setState(collapsed ? 'closed' : 'open') }, [collapsable, collapsed])
 
-  const cardStyle = {
+  const cardStyle: MotionStyle = {
     backdropFilter: 'blur(16px) saturate(180%)',
     WebkitBackdropFilter: 'blur(16px) saturate(180%)',
     backgroundColor: 'rgba(17, 25, 40, 0.5)',
     borderRadius: 8,
     border: '1px solid rgba(255, 255, 255, 0.125)',
     padding: 20,
-    opacity: fadeIn ? 0 : 1,
+    opacity: fadeIn || fadein ? 0 : 1,
     boxShadow: '10px 10px 20px 0px  rgba(100, 100, 100, 0.24)',
     ...(collapsable ? { position: 'relative' } : {}),
     ...(collapsable && isCollapsed && !customHeader ? { cursor: 'pointer' } : {}),
@@ -39,7 +58,7 @@ export function Card ({ fadeIn, collapsable, title, titleCollapsed, titleStyle, 
       animate={{ opacity: 1 }}
       transition={{ duration: 1 }}
       style={{ ...cardStyle, ...(style ? { width: style.width, height: style.height } : {}) }}
-      onClick={isCollapsed && !customHeader ? () => toggleCollapse('open') : null}
+      onClick={isCollapsed && !customHeader ? () => toggleCollapse('open') : undefined}
     >
 
       {!customHeader && !title

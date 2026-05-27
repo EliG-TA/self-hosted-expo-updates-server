@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import ReactDOM from 'react-dom'
+import type { CSSProperties } from 'react'
 
 import { Icon, Text, Flex, Colors } from '..'
 import { useMount, useUnmount } from 'react-use'
@@ -8,7 +9,21 @@ import { motion } from 'framer-motion'
 const modalMenu = document.getElementById('modal-menu')
 const modalDiv = document.createElement('div')
 
-const MENU: any = {
+interface MenuEntry {
+  label: string
+  icon: string
+  path: string
+  external?: boolean
+}
+
+const MENU: {
+  accent: string
+  base: string
+  background: string
+  miniWidth: number
+  menuWidth: number
+  toggle: null | React.Dispatch<React.SetStateAction<number>>
+} = {
   accent: Colors.primary,
   base: 'transparent',
   background: 'rgba(17, 25, 40, 0.5)',
@@ -28,7 +43,7 @@ export const HamburgerMenu = () => {
   )
 }
 
-const MenuItem = ({ item: { label, icon, path }, action }: any) => (
+const MenuItem = ({ item: { label, icon }, action }: { item: Omit<MenuEntry, 'path' | 'external'>; action: () => void }) => (
   <motion.div
     onTap={action} style={Styles.menuElement}
     whileHover='hovered' transition={{ default: { duration: 0.3 } }}
@@ -41,7 +56,7 @@ const MenuItem = ({ item: { label, icon, path }, action }: any) => (
   </motion.div>
 )
 
-export const SlidingMenu = ({ menuItems, menuAction }: any) => {
+export const SlidingMenu = ({ menuItems, menuAction }: { menuItems: MenuEntry[]; menuAction: (path: string, external?: boolean) => void }) => {
   const [visibility, setVisibility] = useState(0)
 
   useMount(() => { modalMenu?.appendChild(modalDiv); MENU.toggle = setVisibility })
@@ -59,7 +74,7 @@ export const SlidingMenu = ({ menuItems, menuAction }: any) => {
         transition={{ ease: 'easeOut', duration: 0.5 }}
         style={Styles.menuContainer}
       >
-        {menuItems.map(({ path, external, ...item }: any, ind: number) => <MenuItem key={ind} item={item} action={() => { menuAction(path, external); setVisibility(0) }} />)}
+        {menuItems.map(({ path, external, ...item }, ind: number) => <MenuItem key={ind} item={item} action={() => { menuAction(path, external); setVisibility(0) }} />)}
       </motion.div>
     )
   }
@@ -67,7 +82,7 @@ export const SlidingMenu = ({ menuItems, menuAction }: any) => {
   return modalMenu ? ReactDOM.createPortal(renderMenu(), modalMenu) : null
 }
 
-const Styles: any = {
+const Styles: Record<string, CSSProperties> = {
   menuContainer: {
     position: 'absolute',
     top: 50,

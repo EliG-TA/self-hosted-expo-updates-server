@@ -1,7 +1,12 @@
 import { Button, Text, Input } from '../../Components'
 import { FC, useCQuery } from '../../Services'
+import type { AppRecord } from '../../types'
 
-const getSnippet = ({ server, slug, uploadKey }) => `# Expo publish to local folder
+interface UploadKeyRecord {
+  uploadKey?: string
+}
+
+const getSnippet = ({ server, slug, uploadKey }: { server: string, slug: string, uploadKey: string }) => `# Expo publish to local folder
 cd /my/app/folder
 yarn expo export --output-dir /path/to/build/folder
 
@@ -33,8 +38,8 @@ const handleDownload = () => {
   document.body.removeChild(link)
 }
 
-export const UpdateInstructions = ({ app }) => {
-  const { data = {} } = useCQuery('uploadKey')
+export const UpdateInstructions = ({ app }: { app: AppRecord }) => {
+  const { data = {} } = useCQuery<UploadKeyRecord>('uploadKey')
   const snippet = getSnippet({ server: FC.server, slug: app._id, uploadKey: data?.uploadKey || '?' })
   console.log(app)
   return (

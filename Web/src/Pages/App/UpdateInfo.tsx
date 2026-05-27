@@ -1,12 +1,26 @@
-// @ts-nocheck
 import { Flex, Input, Text, Button, Spinner, Colors } from '../../Components'
 import { TabView, TabPanel } from 'primereact/tabview'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { useCQuery, FC, invalidateQuery } from '../../Services'
 import moment from 'moment'
+import type { CSSProperties, ReactNode } from 'react'
+import type { ListResult, PatchRecord, UploadRecord, UnknownRecord } from '../../types'
+import { listFromResult } from '../../types'
 
-const getSize = (size) => {
+interface UpdateSizes extends UnknownRecord {
+  assetsCount?: number
+  assetsSharedCount?: number
+  assetsIosOnlyCount?: number
+  assetsAndroidOnlyCount?: number
+  zipBytes?: number
+  bundleByPlatform?: { ios?: number, android?: number }
+  assetsBytes?: number
+  patchesBytes?: number
+  total?: number
+}
+
+const getSize = (size?: number) => {
   if (!size) return '0 B'
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)} KB`
@@ -14,7 +28,7 @@ const getSize = (size) => {
   return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
-const formatDate = (date) => date ? moment(date).format('YYYY-MM-DD HH:mm:ss') : '—'
+const formatDate = (date?: string | Date) => date ? moment(date).format('YYYY-MM-DD HH:mm:ss') : '—'
 
 const STATUS_COLORS = {
   released: '#4caf50',
@@ -28,7 +42,7 @@ const STATUS_COLORS = {
   'not-beneficial': '#9e9e9e'
 }
 
-const styles = {
+const styles: Record<string, CSSProperties> = {
   section: {
     width: '100%',
     marginTop: 14,
@@ -86,11 +100,11 @@ const styles = {
   }
 }
 
-const StatusBadge = ({ status }) => (
-  <span style={{ ...styles.badge, backgroundColor: STATUS_COLORS[status] || '#666' }}>{status}</span>
+const StatusBadge = ({ status }: { status?: string }) => (
+  <span style={{ ...styles.badge, backgroundColor: STATUS_COLORS[status as keyof typeof STATUS_COLORS] || '#666' }}>{status}</span>
 )
 
-const Row = ({ label, value, mono, children }) => (
+const Row = ({ label, value, mono, children }: { label: string, value?: ReactNode, mono?: boolean, children?: ReactNode }) => (
   <Flex row style={styles.row}>
     <div style={styles.label}>{label}</div>
     <div style={{ ...styles.value, ...(mono ? styles.mono : {}) }}>
@@ -99,15 +113,15 @@ const Row = ({ label, value, mono, children }) => (
   </Flex>
 )
 
-const Section = ({ title, children, style }) => (
+const Section = ({ title, children, style }: { title: string, children: ReactNode, style?: CSSProperties }) => (
   <Flex as style={{ ...styles.section, ...style }}>
     <div style={styles.sectionTitle}>{title}</div>
     {children}
   </Flex>
 )
 
-const SizesSection = ({ uploadId }) => {
-  const { data: sizes, isSuccess } = useCQuery(['updateSizes', uploadId])
+const SizesSection = ({ uploadId }: { uploadId: string }) => {
+  const { data: sizes, isSuccess } = useCQuery<UpdateSizes>(['updateSizes', uploadId])
   if (!isSuccess || !sizes) return <Section title='Sizes'><Spinner /></Section>
 
   const assetsBreakdown = sizes.assetsCount
@@ -136,12 +150,12 @@ const SizesSection = ({ uploadId }) => {
   )
 }
 
-const PatchesTab = ({ uploadId, project }) => {
-  const { data: patches, isSuccess } = useCQuery(['patches', project])
+const PatchesTab = ({ uploadId, project }: { uploadId: string, project?: string }) => {
+  const { data: patches, isSuccess } = useCQuery<ListResult<PatchRecord>>(['patches', project])
   if (!isSuccess) return <Spinner />
-  const related = (patches?.data || patches || []).filter(p => p.toUploadId === uploadId)
+  const related = listFromResult(patches).filter(p => p.toUploadId === uploadId)
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id: string) => {
     if (!window.confirm('Delete this patch?')) return
     try {
       await FC.client.service('patches').remove(id)
@@ -172,7 +186,7 @@ const PatchesTab = ({ uploadId, project }) => {
   )
 }
 
-const OverviewTab = ({ update }) => (
+const OverviewTab = ({ update }: { update: UploadRecord }) => (
   <div style={{ width: '100%', display: 'block', boxSizing: 'border-box' }}>
     <Section title='Identity' style={{ marginTop: 0 }}>
       <Row label='Update ID' value={update.updateId || 'Not Released'} mono />
@@ -190,7 +204,7 @@ const OverviewTab = ({ update }) => (
     <Section title='Source'>
       <Row label='Git Branch' value={update.gitBranch} mono />
       <Row label='Git Commit' value={update.gitCommit} mono />
-      <Row label='Original File' value={update.originalname} mono />
+      <Row label='Original File' value={String(update.originalname || '')} mono />
       <Row label='Uploaded File' value={update.filename} mono />
     </Section>
 
@@ -198,7 +212,7 @@ const OverviewTab = ({ update }) => (
   </div>
 )
 
-export const UpdateInfo = ({ update, activeIndex, onTabChange }) => {
+export const UpdateInfo = ({ update, activeIndex, onTabChange }: { update: UploadRecord, activeIndex?: number, onTabChange?: (index: number) => void }) => {
   const tabProps = onTabChange !== undefined
     ? { activeIndex, onTabChange: (e) => onTabChange(e.index) }
     : {}

@@ -1,17 +1,59 @@
-// @ts-nocheck
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { Flex, Card, Spinner, Button, Text, Colors, StatusPill } from '../../Components'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { useCQuery, useCollapsedState } from '../../Services'
 import { Release } from '../App/Release'
 import moment from 'moment'
+import type { AppRecord, ListResult, UploadRecord } from '../../types'
+import { listFromResult } from '../../types'
 
-const formatDate = (date) => date ? moment(date).format('YYYY-MM-DD HH:mm:ss') : '—'
+interface StatsUpdate {
+  updateId: string
+  onThisVersion?: number
+  lastSeen?: string | Date
+}
 
-const compareVersionsDesc = (a, b) => {
-  const partsA = String(a).split(/[-.]/).map(x => isNaN(x) ? x : parseInt(x))
-  const partsB = String(b).split(/[-.]/).map(x => isNaN(x) ? x : parseInt(x))
+interface PlatformStats {
+  version?: string
+  releaseChannel?: string
+  platform: 'ios' | 'android' | string
+  embeddedUpdates?: string[]
+  updates?: StatsUpdate[]
+}
+
+interface RuntimeGroup {
+  version: string
+  releaseChannel: string
+  platformStats: PlatformStats[]
+  totalDevices: number
+}
+
+interface UpdateRow extends Partial<UploadRecord> {
+  [key: string]: unknown
+  updateId: string
+  ios?: number
+  android?: number
+  total: number
+  lastSeen?: string | Date | null
+  iosPct?: number
+  androidPct?: number
+  totalPct?: number
+  uploadAvailable?: boolean
+  upload?: UploadRecord | null
+}
+
+const formatDate = (date?: string | Date | null) => date ? moment(date).format('YYYY-MM-DD HH:mm:ss') : '—'
+
+const parseVersionPart = (part: string) => {
+  const parsed = Number.parseInt(part, 10)
+  return Number.isNaN(parsed) ? part : parsed
+}
+
+const compareVersionsDesc = (a: string, b: string) => {
+  const partsA = String(a).split(/[-.]/).map(parseVersionPart)
+  const partsB = String(b).split(/[-.]/).map(parseVersionPart)
   for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
     const pa = partsA[i] || 0
     const pb = partsB[i] || 0
@@ -21,7 +63,7 @@ const compareVersionsDesc = (a, b) => {
   return 0
 }
 
-const embeddedLine = (row) => {
+const embeddedLine = (row: UpdateRow) => {
   const platforms = []
   if (row.embeddedIos) platforms.push('iOS')
   if (row.embeddedAndroid) platforms.push('Android')
@@ -29,7 +71,7 @@ const embeddedLine = (row) => {
   return `embedded · ${platforms.join(', ')}`
 }
 
-const UpdateIdCell = ({ row, onOpen }) => {
+const UpdateIdCell = ({ row, onOpen }: { row: UpdateRow, onOpen: (row: UpdateRow) => void }) => {
   const clickable = !!row.uploadAvailable
   const embedded = embeddedLine(row)
   return (
@@ -63,7 +105,7 @@ const UpdateIdCell = ({ row, onOpen }) => {
   )
 }
 
-const CountWithPct = ({ count, pct, accent = Colors.primary }) => {
+const CountWithPct = ({ count, pct, accent = Colors.primary }: { count?: number, pct: number, accent?: string }) => {
   if (!count) {
     return <span style={{ color: 'rgba(255,255,255,0.25)', fontVariantNumeric: 'tabular-nums' }}>—</span>
   }
@@ -100,7 +142,7 @@ const CountWithPct = ({ count, pct, accent = Colors.primary }) => {
   )
 }
 
-const RuntimeSection = ({ version, collapsed, onToggle, children }) => (
+const RuntimeSection = ({ version, collapsed, onToggle, children }: { version: string, collapsed: boolean, onToggle: (next: boolean) => void, children: ReactNode }) => (
   <div style={{ width: '100%', marginTop: 28 }}>
     <div
       onClick={() => onToggle && onToggle(!collapsed)}
@@ -130,9 +172,9 @@ const RuntimeSection = ({ version, collapsed, onToggle, children }) => (
   </div>
 )
 
-const ChannelGroup = ({ releaseChannel, platformStats, project, onOpen, collapsed, onToggle }) => {
+const ChannelGroup = ({ releaseChannel, platformStats, project, onOpen, collapsed, onToggle }: { releaseChannel: string, platformStats: PlatformStats[], project: string, onOpen: (row: UpdateRow) => void, collapsed: boolean, onToggle: (next: boolean) => void }) => {
   // Roll up flat per-platform rows into one row per updateId.
-  const byUpdate = new Map()
+  const byUpdate = new Map<string, UpdateRow>()
   for (const ps of platformStats) {
     const embeddedSet = new Set(ps.embeddedUpdates || [])
     for (const u of (ps.updates || [])) {
@@ -148,7 +190,8 @@ const ChannelGroup = ({ releaseChannel, platformStats, project, onOpen, collapse
         })
       }
       const r = byUpdate.get(u.updateId)
-      r[ps.platform] = (r[ps.platform] || 0) + (u.onThisVersion || 0)
+      if (!r) continue
+      r[ps.platform] = ((r[ps.platform] as number | undefined) || 0) + (u.onThisVersion || 0)
       r.total += u.onThisVersion || 0
       if (!r.lastSeen || moment(u.lastSeen).isAfter(r.lastSeen)) r.lastSeen = u.lastSeen
       if (ps.platform === 'ios' && embeddedSet.has(u.updateId)) r.embeddedIos = true
@@ -168,8 +211,8 @@ const ChannelGroup = ({ releaseChannel, platformStats, project, onOpen, collapse
   }))
 
   // Look up which updates have a matching upload record (clickable rows).
-  const { data: uploadsData } = useCQuery(['uploads', project])
-  const uploads = uploadsData?.data || uploadsData || []
+  const { data: uploadsData } = useCQuery<ListResult<UploadRecord>>(['uploads', project])
+  const uploads = listFromResult(uploadsData)
   const uploadByUpdateId = new Map(uploads.map(u => [u.updateId, u]))
   const enrichedRows = rowsWithPct.map(r => {
     const upload = uploadByUpdateId.get(r.updateId) || null
@@ -223,7 +266,7 @@ const ChannelGroup = ({ releaseChannel, platformStats, project, onOpen, collapse
 }
 
 // Container components wrap a hook call (which can't live inside .map()).
-const ChannelGroupContainer = ({ project, version, releaseChannel, platformStats, onOpen }) => {
+const ChannelGroupContainer = ({ project, version, releaseChannel, platformStats, onOpen }: { project: string, version: string, releaseChannel: string, platformStats: PlatformStats[], onOpen: (row: UpdateRow) => void }) => {
   const [collapsed, setCollapsed] = useCollapsedState(
     `stats:${project}:channel:${version}:${releaseChannel}`,
     false
@@ -240,7 +283,7 @@ const ChannelGroupContainer = ({ project, version, releaseChannel, platformStats
   )
 }
 
-const RuntimeSectionContainer = ({ project, version, channelGroups, onOpen }) => {
+const RuntimeSectionContainer = ({ project, version, channelGroups, onOpen }: { project: string, version: string, channelGroups: RuntimeGroup[], onOpen: (row: UpdateRow) => void }) => {
   const [collapsed, setCollapsed] = useCollapsedState(
     `stats:${project}:runtime:${version}`,
     false
@@ -261,11 +304,11 @@ const RuntimeSectionContainer = ({ project, version, channelGroups, onOpen }) =>
   )
 }
 
-export const AppDisplay = ({ app, goto }) => {
-  const { data: stats, isSuccess, isFetching } = useCQuery(['stats', app._id])
-  const [openedUpdate, setOpenedUpdate] = useState(null)
+export const AppDisplay = ({ app, goto }: { app: AppRecord, goto: () => void }) => {
+  const { data: stats, isSuccess, isFetching } = useCQuery<PlatformStats[]>(['stats', app._id])
+  const [openedUpdate, setOpenedUpdate] = useState<UploadRecord | null>(null)
 
-  const handleOpen = (row) => {
+  const handleOpen = (row: UpdateRow) => {
     if (row?.upload) setOpenedUpdate(row.upload)
   }
 
@@ -276,21 +319,22 @@ export const AppDisplay = ({ app, goto }) => {
     if (!isSuccess) return []
 
     // Step 1: collapse per-platform rows into (version, channel) buckets.
-    const channelBuckets = new Map()
+    const channelBuckets = new Map<string, RuntimeGroup>()
     for (const s of stats || []) {
       const key = `${s.version}__${s.releaseChannel}`
       if (!channelBuckets.has(key)) {
         channelBuckets.set(key, {
           version: s.version,
           releaseChannel: s.releaseChannel,
-          platformStats: []
+          platformStats: [],
+          totalDevices: 0
         })
       }
       channelBuckets.get(key).platformStats.push(s)
     }
 
     // Step 2: compute totalDevices per channel-bucket and group by runtime.
-    const byRuntime = new Map()
+    const byRuntime = new Map<string, RuntimeGroup[]>()
     for (const group of channelBuckets.values()) {
       group.totalDevices = group.platformStats.reduce(
         (acc, ps) => acc + (ps.updates || []).reduce((a, u) => a + (u.onThisVersion || 0), 0),

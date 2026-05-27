@@ -1,27 +1,55 @@
 import React, { useRef, useEffect } from 'react'
+import type { CSSProperties, RefObject } from 'react'
 import { Password } from 'primereact/password'
+import type { PasswordProps } from 'primereact/password'
 import { InputText } from 'primereact/inputtext'
+import type { InputTextProps } from 'primereact/inputtext'
 import { InputTextarea } from 'primereact/inputtextarea'
+import type { InputTextareaProps } from 'primereact/inputtextarea'
 import { Calendar } from 'primereact/calendar'
+import type { CalendarProps } from 'primereact/calendar'
 import { Dropdown } from 'primereact/dropdown'
+import type { DropdownProps } from 'primereact/dropdown'
 import { locale, addLocale } from 'primereact/api'
 import moment from 'moment'
 
 import { Flex, Text, Colors } from '..'
+import type { InputProps } from '../../types'
+
+type MutableInputProps = InputProps & {
+  ref?: RefObject<unknown>
+  className?: string
+  onChange?: (event: { target: { value: unknown; id?: string } }) => void
+  onKeyDown?: (event: { keyCode: number }) => void | Promise<void>
+  inputStyle?: CSSProperties
+  feedback?: boolean
+  placeholder?: string
+  autoResize?: boolean
+  rows?: number
+  yearRange?: string
+  showIcon?: boolean
+  dateFormat?: string
+  readOnlyInput?: boolean
+  options?: DropdownProps['options']
+}
+
+type PrimeInputProps = Partial<PasswordProps & InputTextProps & InputTextareaProps & CalendarProps & DropdownProps>
 
 export const Input = ({
   setRef, setValue, useState, onChange, onEnter,
   autofocus, password, date, label, multiline, dropdown,
-  autoComplete, error, ...props
-}: any) => {
+  autoComplete, error, ...restProps
+}: InputProps) => {
   const inputRef = useRef(null)
   setRef && setRef(inputRef)
+  const props = restProps as MutableInputProps
   props.ref = inputRef
   useEffect(() => {
     autofocus && setTimeout(() => {
       if (!inputRef || !inputRef.current) return false
-      inputRef.current.element && inputRef.current.element.focus()
-      inputRef.current.inputEl && inputRef.current.inputEl.focus()
+      const current = inputRef.current as { element?: { focus: () => void }; inputEl?: { focus: () => void } } | null
+      current?.element?.focus()
+      current?.inputEl?.focus()
     }, 500)
   }, [autofocus])
 
@@ -32,13 +60,14 @@ export const Input = ({
   props.value === undefined && (props.value = '')
   useState && useState.length === 2 && (props.value = useState[0])
 
-  useState && useState.length === 2 && (props.onChange = (e) => useState[1](e.target.value))
-  setValue && (props.onChange = (e) => setValue(e.target.value))
-  onChange && (props.onChange = (e) => onChange({ [e.target.id]: e.target.value }))
+  useState && useState.length === 2 && (props.onChange = (e) => useState[1](String(e.target.value ?? '')))
+  setValue && (props.onChange = (e) => setValue(String(e.target.value ?? '')))
+  onChange && (props.onChange = (e) => onChange({ [e.target.id || 'value']: e.target.value }))
   onEnter && (props.onKeyDown = (key) => key.keyCode === 13 && onEnter())
   useState && onChange && (props.onChange = (e) => {
-    useState[1](e.target.value)
-    onChange(e.target.value)
+    const value = String(e.target.value ?? '')
+    useState[1](value)
+    onChange(value)
   })
 
   props.autoComplete = autoComplete || 'off'
@@ -60,7 +89,7 @@ export const Input = ({
     const containerStyle = extractStyle(props)
     props.inputStyle = { ...props.style, width: '100%' }
     props.style = containerStyle
-    return <Password {...props} />
+    return <Password {...toPrimeProps(props)} />
   }
 
   if (date) {
@@ -80,7 +109,7 @@ export const Input = ({
     return (
       <Flex row js style={{ backgroundColor: 'rgba(30,37,47)', paddingLeft: 12, borderRadius: 20, ...containerStyle }}>
         <Text value={label} color='white' />
-        <Calendar {...props} value={new Date(props.value)} />
+        <Calendar {...toPrimeProps(props)} value={new Date(String(props.value))} />
       </Flex>
     )
   }
@@ -89,10 +118,10 @@ export const Input = ({
     props.autoResize === undefined && (props.autoResize = true)
     props.style.height = '100%'
     props.style.padding = 15
-    return <InputTextarea {...props} />
+    return <InputTextarea {...toPrimeProps(props)} />
   }
 
-  if (dropdown) return <Dropdown {...props} />
+  if (dropdown) return <Dropdown {...toPrimeProps(props)} />
 
   if (label) {
     const containerStyle = extractStyle(props)
@@ -102,15 +131,17 @@ export const Input = ({
     return (
       <Flex row js style={{ backgroundColor: 'rgba(30,37,47)', paddingLeft: 12, borderRadius: 20, ...containerStyle }}>
         <Text value={label} color='white' />
-        <InputText {...props} />
+        <InputText {...toPrimeProps(props)} />
       </Flex>
     )
   }
 
-  return <InputText {...props} />
+  return <InputText {...toPrimeProps(props)} />
 }
 
-const extractStyle = (props: any) => {
+const toPrimeProps = (props: MutableInputProps): PrimeInputProps => props as PrimeInputProps
+
+const extractStyle = (props: MutableInputProps) => {
   const { width, height, marginTop, marginBottom, marginLeft, marginRight, ...otherStyles } = props.style
   props.style = otherStyles
   return { width, height, marginTop, marginBottom, marginLeft, marginRight }

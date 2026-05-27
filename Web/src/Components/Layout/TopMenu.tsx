@@ -1,13 +1,15 @@
 
 import React from 'react'
+import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
 import { Text, HamburgerMenu, Flex, SlidingMenu, Colors } from '..'
 import { doLogout } from '../../State'
 import { useCQuery } from '../../Services'
 import menuItems from './MenuItems'
 import { useLocation, useNavigate } from 'react-router-dom'
+import type { DiskUsageRecord } from '../../types'
 
-const formatBytes = (n: any) => {
+const formatBytes = (n: number) => {
   if (!n) return '0 B'
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
@@ -16,7 +18,7 @@ const formatBytes = (n: any) => {
 }
 
 const DiskUsageChip = () => {
-  const { data, isSuccess, isLoading, isError, error } = useCQuery('diskUsage')
+  const { data, isLoading, isError, error } = useCQuery<DiskUsageRecord>('diskUsage')
 
   if (isError) {
     return (
@@ -52,12 +54,12 @@ const DiskUsageChip = () => {
   )
 }
 
-export function TopMenu ({ licenses, history }: any) {
+export function TopMenu () {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { label: currentPage } = menuItems?.find(item => pathname?.includes(item.path)) || { label: '' }
 
-  const menuAction = (page: any, external: any) => {
+  const menuAction = (page: string, external?: boolean) => {
     if (page === 'Logout') return doLogout()
     console.log(page, external)
     if (external) return window.open(page, '_blank')
@@ -85,7 +87,7 @@ export function TopMenu ({ licenses, history }: any) {
   )
 }
 
-const styles: any = {
+const styles: Record<string, CSSProperties> = {
   chip: {
     padding: '4px 10px',
     borderRadius: 6,

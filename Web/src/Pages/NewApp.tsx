@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Flex, Card, Input, Button, Spinner } from '../Components'
 import { FC, invalidateQuery } from '../Services'
 import { useNavigate } from 'react-router-dom'
+import type { AppRecord } from '../types'
 
 export default function NewApp () {
   const [slug, setSlug] = useState('')
@@ -12,8 +13,8 @@ export default function NewApp () {
     setLoading(true)
     try {
       if (!slug) throw new Error('Please enter the application slug')
-      const { _id } = await FC.client.service('apps').create({ _id: slug })
-      window.toast.show({
+      const { _id } = await FC.client.service('apps').create({ _id: slug }) as AppRecord
+      window.toast?.show({
         severity: 'info',
         summary: 'App Created',
         detail: 'Redirecting to app page...'
@@ -21,7 +22,7 @@ export default function NewApp () {
       invalidateQuery('apps')
       setTimeout(() => navigate(`/app/${_id}`), 2000)
     } catch (e) {
-      window.toast.show({
+      window.toast?.show({
         severity: 'error',
         summary: 'Error',
         detail: e.message

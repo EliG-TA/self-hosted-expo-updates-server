@@ -1,8 +1,9 @@
 import { Flex, Card, Text, Input, Button, Spinner } from '../../Components'
 import { FC, invalidateQuery } from '../../Services'
 import { useState } from 'react'
+import type { AppRecord, CertificateRecord, StateTuple } from '../../types'
 
-const downloadPem = (certificate, filename) => {
+const downloadPem = (certificate: string, filename: string) => {
   const element = document.createElement('a')
   const file = new Blob([certificate], {
     type: 'text/plain'
@@ -14,11 +15,11 @@ const downloadPem = (certificate, filename) => {
   document.body.removeChild(element)
 }
 
-export const ConfigServer = ({ state: [update, setUpdate] }) => {
+export const ConfigServer = ({ state: [update, setUpdate] }: { state: StateTuple<AppRecord & CertificateRecord> }) => {
   const [loading, setLoading] = useState(false)
   const [needsSave, setNeedsSave] = useState(false)
 
-  const updateField = (field) => (value) => {
+  const updateField = (field: 'certificate' | 'privateKey') => (value: string) => {
     setUpdate({ ...update, [field]: value })
     setNeedsSave(true)
   }
@@ -26,16 +27,16 @@ export const ConfigServer = ({ state: [update, setUpdate] }) => {
   const handleSelfSignedGenerate = async () => {
     setLoading(true)
     try {
-      const { privateKey, certificate } = await FC.client.service('utils').get('generateSelfSigned')
+      const { privateKey, certificate } = await FC.client.service('utils').get('generateSelfSigned') as CertificateRecord
       setUpdate({ ...update, privateKey, certificate })
-      window.toast.show({
+      window.toast?.show({
         severity: 'info',
         summary: 'Keys generated succesfully'
       })
       setNeedsSave(true)
       setLoading(false)
     } catch (e) {
-      window.toast.show({
+      window.toast?.show({
         severity: 'error',
         summary: 'Error',
         detail: e.message
@@ -50,14 +51,14 @@ export const ConfigServer = ({ state: [update, setUpdate] }) => {
       const { _id, ...fields } = update
       await FC.client.service('apps').patch(_id, { ...fields, lastUpdate: new Date() })
       invalidateQuery('app')
-      window.toast.show({
+      window.toast?.show({
         severity: 'info',
         summary: 'App info updated successfully'
       })
       setNeedsSave(false)
     } catch (e) {
       console.log(e)
-      window.toast.show({
+      window.toast?.show({
         severity: 'error',
         summary: 'Error',
         detail: e.message
