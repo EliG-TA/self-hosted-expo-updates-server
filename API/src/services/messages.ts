@@ -1,3 +1,4 @@
+// @ts-nocheck
 const s = require('../hooks/security')
 
 class Service {

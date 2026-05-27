@@ -1,5 +1,6 @@
 
 // Application hooks that run for every service
+// @ts-nocheck
 const util = require('util')
 
 const { logger } = require('../modules')

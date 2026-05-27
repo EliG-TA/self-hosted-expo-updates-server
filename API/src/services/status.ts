@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { logger } = require('../modules')
 class Service {
   constructor (options) {

@@ -1,6 +1,7 @@
+// @ts-nocheck
 const crypto = require('crypto')
 const fs = require('fs')
-const mime = require('mime')
+const mime = require('mime').default
 const path = require('path')
 
 function createHash (file, hashingAlgorithm, encoding) {

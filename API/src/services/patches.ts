@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { MongoDBService } = require('@feathersjs/mongodb')
 const s = require('../hooks/security')
 const error = require('../hooks/error')

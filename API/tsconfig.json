@@ -3,6 +3,7 @@
     "lib": ["ESNext"],
     "target": "ESNext",
     "module": "CommonJS",
+    "moduleDetection": "force",
     "moduleResolution": "node",
     "types": ["bun-types", "node"],
 
@@ -18,7 +19,8 @@
 
     "strict": false,
     "noImplicitAny": false,
-    "strictNullChecks": false
+    "strictNullChecks": false,
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

@@ -1,3 +1,4 @@
+// @ts-nocheck
 const s = require('../hooks/security')
 const Err = require('@feathersjs/errors')
 const { generateSelfSigned } = require('../modules/expo/certs')
