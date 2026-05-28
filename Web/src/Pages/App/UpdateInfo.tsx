@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import moment from 'moment'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
 import { TabPanel, TabView } from 'primereact/tabview'
 
-import { Button, Colors, Flex, Input, Spinner, Text } from '../../Components'
+import { Button, Colors, ConfirmDialog, Flex, Input, Spinner, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery } from '../../Services'
 import type { ListResult, PatchRecord, UnknownRecord, UploadRecord } from '../../types'
 import { listFromResult } from '../../types'
@@ -128,12 +128,40 @@ const Row = ({
   </Flex>
 )
 
-const Section = ({ title, children, style }: { title: string; children: ReactNode; style?: CSSProperties }) => (
-  <Flex as style={{ ...styles.section, ...style }}>
-    <div style={styles.sectionTitle}>{title}</div>
-    {children}
-  </Flex>
-)
+const Section = ({
+  title,
+  children,
+  style,
+  collapsible,
+  defaultCollapsed,
+}: {
+  title: string
+  children: ReactNode
+  style?: CSSProperties
+  collapsible?: boolean
+  defaultCollapsed?: boolean
+}) => {
+  const [collapsed, setCollapsed] = useState(!!defaultCollapsed)
+  const isCollapsed = !!collapsible && collapsed
+  return (
+    <Flex as style={{ ...styles.section, ...style }}>
+      <div
+        style={{
+          ...styles.sectionTitle,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          cursor: collapsible ? 'pointer' : 'default',
+          userSelect: 'none',
+        }}
+        onClick={collapsible ? () => setCollapsed((c) => !c) : undefined}>
+        {collapsible && <span style={{ fontSize: 9 }}>{isCollapsed ? '▶' : '▼'}</span>}
+        {title}
+      </div>
+      {!isCollapsed && children}
+    </Flex>
+  )
+}
 
 const SizesSection = ({ uploadId }: { uploadId: string }) => {
   const { data: sizes, isSuccess } = useCQuery<UpdateSizes>(['updateSizes', uploadId])
@@ -178,137 +206,267 @@ type PatchSource = {
 }
 type PatchSourcesResult = { target?: { platforms?: string[] }; sources: PatchSource[] }
 
-// Manually queue patch generation FROM a chosen base update TO the update
-// being viewed. Candidates are restricted server-side to the same project,
-// runtime version, and release channel.
-const CreatePatchControl = ({ uploadId, project }: { uploadId: string; project?: string }) => {
+// One direction of a patch list, grouped by the counterpart update.
+//   groupField 'fromUpdateId' → incoming (other → this), header shows From
+//   groupField 'toUpdateId'   → outgoing (this → other), header shows To
+const DirectionalPatches = ({
+  rows,
+  groupField,
+  onDelete,
+}: {
+  rows: PatchRecord[]
+  groupField: 'fromUpdateId' | 'toUpdateId'
+  onDelete: (patch: PatchRecord) => void
+}) => {
+  if (!rows.length) return <Text value="None." size={12} color="rgba(255,255,255,0.5)" />
+  const sorted = [...rows].sort((a, b) => {
+    const g = String(a[groupField] || '').localeCompare(String(b[groupField] || ''))
+    return g !== 0 ? g : String(a.platform || '').localeCompare(String(b.platform || ''))
+  })
+  const headerLabel = groupField === 'fromUpdateId' ? 'From' : 'To'
+  return (
+    <DataTable
+      value={sorted}
+      size="small"
+      style={{ width: '100%' }}
+      rowGroupMode="subheader"
+      groupRowsBy={groupField}
+      sortField={groupField}
+      sortOrder={1}
+      rowGroupHeaderTemplate={(row) => (
+        <span style={{ fontSize: 12 }}>
+          <span style={{ color: 'rgba(255,255,255,0.5)', marginRight: 6 }}>{headerLabel}:</span>
+          <UpdateLink updateId={row[groupField] as string} />
+        </span>
+      )}>
+      <Column field="platform" header="Platform" />
+      <Column field="createdAt" header="Date" body={(row) => formatDate(row.createdAt)} />
+      <Column field="status" header="Status" body={(row) => <StatusBadge status={row.status} />} />
+      <Column field="size" header="Size" body={(row) => getSize(row.size || 0)} />
+      <Column
+        field="compressionRatio"
+        header="Ratio"
+        body={(row) => (row.compressionRatio ? `${(row.compressionRatio * 100).toFixed(0)}%` : '—')}
+      />
+      <Column field="servedCount" header="Served" body={(row) => row.servedCount || 0} />
+      <Column
+        header=""
+        body={(row) => <Button icon="trash" danger onClick={() => onDelete(row)} style={{ padding: 4 }} />}
+      />
+    </DataTable>
+  )
+}
+
+// Build patches FROM one or more selected base updates TO the update being
+// viewed. Candidates (same project + runtime version + release channel) are
+// picked by checkbox; one enqueue call per selected source.
+const CreatePatchTable = ({ uploadId, project }: { uploadId: string; project?: string }) => {
   const { data, isSuccess } = useCQuery<PatchSourcesResult>(['patchSources', project, uploadId])
-  const [fromId, setFromId] = useState('')
+  const { data: patchesData } = useCQuery<ListResult<PatchRecord>>(['patches', project])
+  const [selected, setSelected] = useState<PatchSource[]>([])
   const [creating, setCreating] = useState(false)
 
-  const sources = data?.sources || []
-
-  const handleCreate = async () => {
-    if (!fromId) return
-    setCreating(true)
-    try {
-      const res = (await FC.client
-        .service('patches')
-        .update('enqueue', { project, fromUploadId: fromId, toUploadId: uploadId })) as {
-        enqueued?: Array<{ platform: string; action: string }>
-        skipped?: Array<{ platform: string; reason: string }>
-      }
-      invalidateQuery(['patches', 'patchJobs', 'diskUsage'])
-      const enq = res?.enqueued || []
-      const skp = res?.skipped || []
-      const enqMsg = enq.length ? `Queued: ${enq.map((e) => `${e.platform} (${e.action})`).join(', ')}` : ''
-      const skpMsg = skp.length ? `Skipped: ${skp.map((s2) => `${s2.platform} (${s2.reason})`).join(', ')}` : ''
-      window.toast?.show({
-        severity: enq.length ? 'success' : 'info',
-        summary: enq.length ? 'Patch generation queued' : 'Nothing queued',
-        detail: [enqMsg, skpMsg].filter(Boolean).join(' · ') || 'No common platforms',
-      })
-      setFromId('')
-    } catch (e) {
-      window.toast?.show({ severity: 'error', summary: 'Enqueue failed', detail: e.message })
+  // Map fromUpdateId → set of platforms already covered by a patch toward this
+  // update. 'failed' patches don't count as covered — they're retryable via a
+  // fresh enqueue, so their source stays a candidate.
+  const coveredByFrom = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    for (const p of listFromResult(patchesData)) {
+      if (p.toUploadId !== uploadId) continue
+      if (p.status === 'failed') continue
+      const from = p.fromUpdateId ? String(p.fromUpdateId) : ''
+      const plat = p.platform ? String(p.platform) : ''
+      if (!from || !plat) continue
+      if (!map.has(from)) map.set(from, new Set())
+      map.get(from)?.add(plat)
     }
+    return map
+  }, [patchesData, uploadId])
+
+  const rawSources = data?.sources || []
+  // Drop a source only once EVERY common platform already has a (non-failed)
+  // patch — partially-covered sources stay so the missing platform can be made.
+  const sources = rawSources.filter((s) => {
+    const covered = coveredByFrom.get(s.updateId || '')
+    return !covered || !s.platforms.every((p) => covered.has(p))
+  })
+
+  const handleGenerate = async () => {
+    if (!selected.length) return
+    setCreating(true)
+    let enq = 0
+    let skp = 0
+    let failed = 0
+    for (const s of selected) {
+      try {
+        const res = (await FC.client
+          .service('patches')
+          .update('enqueue', { project, fromUploadId: s._id, toUploadId: uploadId })) as {
+          enqueued?: unknown[]
+          skipped?: unknown[]
+        }
+        enq += res?.enqueued?.length || 0
+        skp += res?.skipped?.length || 0
+      } catch (e) {
+        failed++
+      }
+    }
+    invalidateQuery(['patches', 'patchJobs', 'diskUsage'])
+    window.toast?.show({
+      severity: failed ? 'warn' : enq ? 'success' : 'info',
+      summary: `Queued ${enq} patch(es)`,
+      detail:
+        [skp ? `${skp} skipped` : '', failed ? `${failed} source(s) failed` : ''].filter(Boolean).join(' · ') ||
+        undefined,
+    })
+    setSelected([])
     setCreating(false)
   }
 
   if (!isSuccess) return <Spinner />
+  if (!sources.length)
+    return (
+      <Text
+        value={
+          rawSources.length
+            ? 'All eligible base updates already have patches queued for this update.'
+            : 'No eligible base updates (must share runtime version + release channel).'
+        }
+        size={12}
+        color="rgba(255,255,255,0.5)"
+      />
+    )
+
+  // Precompute a string label for platforms so the column is sortable/filterable
+  // (PrimeReact can't sort/filter an array field directly).
+  const rows = sources.map((s) => ({ ...s, platformsLabel: s.platforms.join(' + ') }))
 
   return (
-    <Flex row style={{ gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
-      <Text value="Create patch from:" size={12} bold />
-      <select
-        value={fromId}
-        disabled={creating || !sources.length}
-        onChange={(e) => setFromId(e.target.value)}
-        style={{
-          minWidth: 280,
-          padding: '6px 10px',
-          borderRadius: 4,
-          border: '1px solid rgba(255,255,255,0.2)',
-          background: 'rgba(20,26,37,1)',
-          color: Colors.text,
-          fontSize: 13,
-        }}>
-        <option value="">{sources.length ? 'Select a base update…' : 'No eligible base updates'}</option>
-        {sources.map((s2) => (
-          <option key={s2._id} value={s2._id}>
-            {`${s2.updateId || '—'} · ${s2.status || '—'} · ${s2.platforms.join('+')}${s2.gitCommit ? ` · ${s2.gitCommit.slice(0, 7)}` : ''}`}
-          </option>
-        ))}
-      </select>
-      {creating ? <Spinner /> : <Button icon="plus" label="Generate patch" disabled={!fromId} onClick={handleCreate} />}
-    </Flex>
+    <div style={{ width: '100%' }}>
+      <DataTable
+        value={rows}
+        size="small"
+        style={{ width: '100%' }}
+        dataKey="_id"
+        selectionMode="multiple"
+        selection={selected}
+        onSelectionChange={(e) => setSelected(e.value as PatchSource[])}
+        paginator={rows.length > 10}
+        rows={10}
+        removableSort
+        sortField="createdAt"
+        sortOrder={-1}>
+        <Column selectionMode="multiple" headerStyle={{ width: '3rem' }} />
+        <Column
+          field="updateId"
+          header="Update ID"
+          sortable
+          filter
+          filterPlaceholder="Search id"
+          body={(r: PatchSource) => <UpdateLink updateId={r.updateId} />}
+        />
+        <Column
+          field="status"
+          header="Status"
+          sortable
+          filter
+          filterPlaceholder="Status"
+          body={(r: PatchSource) => <StatusBadge status={r.status} />}
+        />
+        <Column
+          field="platformsLabel"
+          header="Platforms"
+          sortable
+          filter
+          filterPlaceholder="Platform"
+          body={(r: PatchSource) => r.platforms.join(' + ')}
+        />
+        <Column
+          field="gitCommit"
+          header="Commit"
+          sortable
+          filter
+          filterPlaceholder="Commit"
+          body={(r: PatchSource) => <span style={styles.mono}>{r.gitCommit?.slice(0, 7) || '—'}</span>}
+        />
+        <Column field="createdAt" header="Created" sortable body={(r: PatchSource) => formatDate(r.createdAt)} />
+      </DataTable>
+      <Flex row style={{ marginTop: 10 }}>
+        {creating ? (
+          <Spinner />
+        ) : (
+          <Button
+            icon="plus"
+            label={`Generate patches${selected.length ? ` (${selected.length})` : ''}`}
+            disabled={!selected.length}
+            onClick={handleGenerate}
+          />
+        )}
+      </Flex>
+    </div>
   )
 }
 
 const PatchesTab = ({ uploadId, project }: { uploadId: string; project?: string }) => {
   const { data: patches, isSuccess } = useCQuery<ListResult<PatchRecord>>(['patches', project])
+  const [pendingDelete, setPendingDelete] = useState<PatchRecord | null>(null)
+  const [deleting, setDeleting] = useState(false)
   if (!isSuccess) return <Spinner />
-  // Show patches in BOTH directions for this update:
-  //   inbound  — toUploadId === this (someone upgrades INTO this update)
-  //   outbound — fromUploadId === this (this update is the base for others)
-  // Grouped by From: inbound rows sit under their source groups; outbound
-  // rows collect under this update's own From group.
-  const related = listFromResult(patches)
-    .filter((p) => p.toUploadId === uploadId || p.fromUploadId === uploadId)
-    .sort((a, b) => {
-      const f = String(a.fromUpdateId || '').localeCompare(String(b.fromUpdateId || ''))
-      return f !== 0 ? f : String(a.platform || '').localeCompare(String(b.platform || ''))
-    })
+  const all = listFromResult(patches)
+  const incoming = all.filter((p) => p.toUploadId === uploadId) // other → this
+  const outgoing = all.filter((p) => p.fromUploadId === uploadId) // this → other
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this patch?')) return
+  const confirmDelete = async () => {
+    if (!pendingDelete?._id) return
+    setDeleting(true)
     try {
-      await FC.client.service('patches').remove(id)
+      await FC.client.service('patches').remove(pendingDelete._id)
       invalidateQuery(['patches', 'diskUsage'])
     } catch (e) {
       window.toast.show({ severity: 'error', summary: 'Error', detail: e.message })
     }
+    setDeleting(false)
+    setPendingDelete(null)
   }
 
   return (
     <div style={{ width: '100%', display: 'block', boxSizing: 'border-box' }}>
-      <CreatePatchControl uploadId={uploadId} project={project} />
-      {!related.length && <Text value="No patches generated yet." size={12} color="rgba(255,255,255,0.5)" />}
-      {related.length > 0 && (
-        <DataTable
-          value={related}
-          size="small"
-          style={{ width: '100%' }}
-          rowGroupMode="subheader"
-          groupRowsBy="fromUpdateId"
-          sortField="fromUpdateId"
-          sortOrder={1}
-          rowGroupHeaderTemplate={(row) => (
-            <span style={{ fontSize: 12 }}>
-              <span style={{ color: 'rgba(255,255,255,0.5)', marginRight: 6 }}>From:</span>
-              <UpdateLink updateId={row.fromUpdateId} />
-              {row.fromUploadId === uploadId && (
-                <span style={{ color: Colors.primary, marginLeft: 8, fontSize: 11 }}>(this update — outbound)</span>
-              )}
-            </span>
-          )}>
-          <Column field="platform" header="Platform" />
-          <Column header="To" body={(row) => <UpdateLink updateId={row.toUpdateId} />} />
-          <Column field="createdAt" header="Date" body={(row) => formatDate(row.createdAt)} />
-          <Column field="status" header="Status" body={(row) => <StatusBadge status={row.status} />} />
-          <Column field="size" header="Size" body={(row) => getSize(row.size || 0)} />
-          <Column
-            field="compressionRatio"
-            header="Ratio"
-            body={(row) => (row.compressionRatio ? `${(row.compressionRatio * 100).toFixed(0)}%` : '—')}
-          />
-          <Column field="servedCount" header="Served" body={(row) => row.servedCount || 0} />
-          <Column
-            header=""
-            body={(row) => <Button icon="trash" danger onClick={() => handleDelete(row._id)} style={{ padding: 4 }} />}
-          />
-        </DataTable>
-      )}
+      <Section title="Incoming patches  ·  other → this" style={{ marginTop: 0 }} collapsible>
+        <DirectionalPatches rows={incoming} groupField="fromUpdateId" onDelete={setPendingDelete} />
+      </Section>
+
+      <Section title="Outgoing patches  ·  this → other" collapsible>
+        <DirectionalPatches rows={outgoing} groupField="toUpdateId" onDelete={setPendingDelete} />
+      </Section>
+
+      <Section title="Create patches  ·  base → this" collapsible defaultCollapsed>
+        <CreatePatchTable uploadId={uploadId} project={project} />
+      </Section>
+
+      <ConfirmDialog
+        visible={!!pendingDelete}
+        title="Delete patch"
+        confirmIcon="trash"
+        confirmLabel="Delete"
+        confirmDanger
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+        loading={deleting}>
+        {pendingDelete && (
+          <>
+            <Text value={`Delete the ${pendingDelete.platform} patch:`} />
+            <div style={{ ...styles.mono, fontSize: 12, marginTop: 12 }}>
+              {String(pendingDelete.fromUpdateId || '—')}
+              <div style={{ color: Colors.text }}>→</div>
+              {String(pendingDelete.toUpdateId || '—')}
+            </div>
+            <Text
+              value="Removes the patch file and DB record. It will be regenerated on demand if still needed."
+              style={{ marginTop: 16 }}
+            />
+          </>
+        )}
+      </ConfirmDialog>
     </div>
   )
 }

@@ -217,166 +217,173 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
             <Flex row fw style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <Flex row style={{ alignItems: 'center', gap: 10 }}>
                 <Text value="Enable bsdiff patches:" bold />
-            {saving ? (
-              <Spinner />
-            ) : (
-              <InputSwitch checked={!!app?.bsdiffEnabled} onChange={(e) => handleToggle(e.value)} />
-            )}
-          </Flex>
-          <Text
-            value={
-              app?.bsdiffEnabled
-                ? 'Active — clients will receive bsdiff patches when available'
-                : 'Disabled — full bundles only'
-            }
-            size={11}
-            color={Colors.text}
-          />
-        </Flex>
-
-        <Flex row fw style={{ marginTop: 16, gap: 24, flexWrap: 'wrap' }}>
-          <Flex as>
-            <Text value="Total patches" size={11} color={Colors.text} />
-            <Text value={String(stats.count)} bold size={18} />
-          </Flex>
-          <Flex as>
-            <Text value="Total size" size={11} color={Colors.text} />
-            <Text value={fmtBytes(stats.totalSize)} bold size={18} />
-          </Flex>
-          <Flex as>
-            <Text value="Served to clients" size={11} color={Colors.text} />
-            <Text value={String(stats.totalServed)} bold size={18} />
-          </Flex>
-          {Object.entries(stats.byStatus).map(([status, n]) => (
-            <Flex as key={status}>
-              <Text value={status} size={11} color={Colors.text} />
-              <Text value={String(n)} bold size={18} />
-            </Flex>
-          ))}
-        </Flex>
-
-        {/* Cleanup obsolete patches — two-phase like ReleaseManager.cleanupOldUpdates */}
-        <Text value="Cleanup obsolete patches" bold size={14} style={{ marginTop: 24 }} />
-        <Text
-          value="Delete patches whose target update has been set to 'obsolete' and is older than the window below. A patch from an obsolete bundle to a current release is NOT deleted — clients stuck on old bundles still benefit from it."
-          size={12}
-          color="rgba(255,255,255,0.6)"
-        />
-
-        <Flex row style={{ gap: 12, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-          <Flex as>
-            <Text value="Window (days)" size={11} color="rgba(255,255,255,0.5)" />
-            <input
-              type="number"
-              min={0}
-              max={365}
-              value={olderThanDays}
-              disabled={calculating || deleting}
-              onChange={(e) => setOlderThanDays(Math.max(0, parseInt(e.target.value) || 0))}
-              style={{
-                width: 80,
-                padding: '6px 10px',
-                borderRadius: 4,
-                border: '1px solid rgba(255,255,255,0.2)',
-                background: 'rgba(20,26,37,1)',
-                color: Colors.text,
-                fontSize: 14,
-              }}
-            />
-          </Flex>
-          {preview && (
-            <>
-              <Flex as>
-                <Text value="Candidates" size={11} color="rgba(255,255,255,0.5)" />
-                <Text value={String(preview.count)} bold size={20} />
+                {saving ? (
+                  <Spinner />
+                ) : (
+                  <InputSwitch checked={!!app?.bsdiffEnabled} onChange={(e) => handleToggle(e.value)} />
+                )}
               </Flex>
-              <Flex as>
-                <Text value="Space to free" size={11} color="rgba(255,255,255,0.5)" />
-                <Text value={fmtBytes(preview.totalBytes)} bold size={20} />
-              </Flex>
-            </>
-          )}
-        </Flex>
-
-        <Flex row style={{ marginTop: 10, gap: 10, flexWrap: 'wrap' }}>
-          {calculating ? (
-            <Spinner />
-          ) : (
-            <Button
-              icon="calculator"
-              label={preview ? 'Recalculate' : 'Calculate candidates'}
-              onClick={() => handleCalculate(olderThanDays)}
-              disabled={deleting}
-            />
-          )}
-          {preview &&
-            preview.count > 0 &&
-            !calculating &&
-            (deleting ? (
-              <Spinner />
-            ) : (
-              <Button
-                icon="trash"
-                danger
-                label={`Delete ${preview.count} patches (${fmtBytes(preview.totalBytes)})`}
-                onClick={() => setConfirmingCleanup(true)}
+              <Text
+                value={
+                  app?.bsdiffEnabled
+                    ? 'Active — clients will receive bsdiff patches when available'
+                    : 'Disabled — full bundles only'
+                }
+                size={11}
+                color={Colors.text}
               />
-            ))}
-          {purging ? (
-            <Spinner />
-          ) : (
-            <Button icon="trash" danger label="Purge ALL patches" onClick={() => setConfirmingPurge(true)} />
-          )}
-        </Flex>
+            </Flex>
 
-        {preview && preview.count > 0 && (
-          <DataTable
-            value={preview.candidates}
-            size="small"
-            paginator
-            rows={10}
-            style={{ width: '100%', marginTop: 12 }}
-            emptyMessage="No candidates">
-            <Column field="platform" header="Platform" />
-            <Column
-              header="From → To"
-              body={(r: ObsoleteCandidate) => (
-                <div style={stackCell}>
-                  <UpdateLink updateId={r.fromUpdateId} />
-                  <span style={{ color: Colors.text }}>→</span>
-                  <UpdateLink updateId={r.toUpdateId} />
-                </div>
+            <Flex row fw style={{ marginTop: 16, gap: 24, flexWrap: 'wrap' }}>
+              <Flex as>
+                <Text value="Total patches" size={11} color={Colors.text} />
+                <Text value={String(stats.count)} bold size={18} />
+              </Flex>
+              <Flex as>
+                <Text value="Total size" size={11} color={Colors.text} />
+                <Text value={fmtBytes(stats.totalSize)} bold size={18} />
+              </Flex>
+              <Flex as>
+                <Text value="Served to clients" size={11} color={Colors.text} />
+                <Text value={String(stats.totalServed)} bold size={18} />
+              </Flex>
+              {Object.entries(stats.byStatus).map(([status, n]) => (
+                <Flex as key={status}>
+                  <Text value={status} size={11} color={Colors.text} />
+                  <Text value={String(n)} bold size={18} />
+                </Flex>
+              ))}
+            </Flex>
+
+            {/* Cleanup obsolete patches — two-phase like ReleaseManager.cleanupOldUpdates */}
+            <Text value="Cleanup obsolete patches" bold size={14} style={{ marginTop: 24 }} />
+            <Text
+              value="Delete patches whose target update has been set to 'obsolete' and is older than the window below. A patch from an obsolete bundle to a current release is NOT deleted — clients stuck on old bundles still benefit from it."
+              size={12}
+              color="rgba(255,255,255,0.6)"
+            />
+
+            <Flex row style={{ gap: 12, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+              <Flex as>
+                <Text value="Window (days)" size={11} color="rgba(255,255,255,0.5)" />
+                <input
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={olderThanDays}
+                  disabled={calculating || deleting}
+                  onChange={(e) => setOlderThanDays(Math.max(0, parseInt(e.target.value) || 0))}
+                  style={{
+                    width: 80,
+                    padding: '6px 10px',
+                    borderRadius: 4,
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    background: 'rgba(20,26,37,1)',
+                    color: Colors.text,
+                    fontSize: 14,
+                  }}
+                />
+              </Flex>
+              {preview && (
+                <>
+                  <Flex as>
+                    <Text value="Candidates" size={11} color="rgba(255,255,255,0.5)" />
+                    <Text value={String(preview.count)} bold size={20} />
+                  </Flex>
+                  <Flex as>
+                    <Text value="Space to free" size={11} color="rgba(255,255,255,0.5)" />
+                    <Text value={fmtBytes(preview.totalBytes)} bold size={20} />
+                  </Flex>
+                </>
               )}
-            />
-            <Column
-              header="Target version"
-              body={(r: ObsoleteCandidate) => <Text value={r.toUpload?.version || '—'} size={11} />}
-            />
-            <Column
-              header="Channel"
-              body={(r: ObsoleteCandidate) => <Text value={r.toUpload?.releaseChannel || '—'} size={11} />}
-            />
-            <Column header="Target created" body={(r: ObsoleteCandidate) => fmtDate(r.toUpload?.createdAt)} />
-            <Column
-              field="status"
-              header="Patch status"
-              body={(r: ObsoleteCandidate) => <Pill value={r.status} color={PATCH_STATUS_COLORS[r.status || '']} />}
-            />
-            <Column field="size" header="Size" body={(r: ObsoleteCandidate) => fmtBytes(r.size)} />
-            <Column field="servedCount" header="Served" body={(r: ObsoleteCandidate) => String(r.servedCount || 0)} />
-            <Column field="createdAt" header="Patch created" body={(r: ObsoleteCandidate) => fmtDate(r.createdAt)} />
-          </DataTable>
-        )}
+            </Flex>
 
-        {preview && preview.count === 0 && (
-          <Text
-            value={`No obsolete patches older than ${preview.computedForDays} day(s) for this app.`}
-            size={12}
-            color={Colors.text}
-            style={{ marginTop: 12 }}
-          />
-        )}
+            <Flex row style={{ marginTop: 10, gap: 10, flexWrap: 'wrap' }}>
+              {calculating ? (
+                <Spinner />
+              ) : (
+                <Button
+                  icon="calculator"
+                  label={preview ? 'Recalculate' : 'Calculate candidates'}
+                  onClick={() => handleCalculate(olderThanDays)}
+                  disabled={deleting}
+                />
+              )}
+              {preview &&
+                preview.count > 0 &&
+                !calculating &&
+                (deleting ? (
+                  <Spinner />
+                ) : (
+                  <Button
+                    icon="trash"
+                    danger
+                    label={`Delete ${preview.count} patches (${fmtBytes(preview.totalBytes)})`}
+                    onClick={() => setConfirmingCleanup(true)}
+                  />
+                ))}
+              {purging ? (
+                <Spinner />
+              ) : (
+                <Button icon="trash" danger label="Purge ALL patches" onClick={() => setConfirmingPurge(true)} />
+              )}
+            </Flex>
 
+            {preview && preview.count > 0 && (
+              <DataTable
+                value={preview.candidates}
+                size="small"
+                paginator
+                rows={10}
+                style={{ width: '100%', marginTop: 12 }}
+                emptyMessage="No candidates">
+                <Column field="platform" header="Platform" />
+                <Column
+                  header="From → To"
+                  body={(r: ObsoleteCandidate) => (
+                    <div style={stackCell}>
+                      <UpdateLink updateId={r.fromUpdateId} />
+                      <span style={{ color: Colors.text }}>→</span>
+                      <UpdateLink updateId={r.toUpdateId} />
+                    </div>
+                  )}
+                />
+                <Column
+                  header="Target version"
+                  body={(r: ObsoleteCandidate) => <Text value={r.toUpload?.version || '—'} size={11} />}
+                />
+                <Column
+                  header="Channel"
+                  body={(r: ObsoleteCandidate) => <Text value={r.toUpload?.releaseChannel || '—'} size={11} />}
+                />
+                <Column header="Target created" body={(r: ObsoleteCandidate) => fmtDate(r.toUpload?.createdAt)} />
+                <Column
+                  field="status"
+                  header="Patch status"
+                  body={(r: ObsoleteCandidate) => <Pill value={r.status} color={PATCH_STATUS_COLORS[r.status || '']} />}
+                />
+                <Column field="size" header="Size" body={(r: ObsoleteCandidate) => fmtBytes(r.size)} />
+                <Column
+                  field="servedCount"
+                  header="Served"
+                  body={(r: ObsoleteCandidate) => String(r.servedCount || 0)}
+                />
+                <Column
+                  field="createdAt"
+                  header="Patch created"
+                  body={(r: ObsoleteCandidate) => fmtDate(r.createdAt)}
+                />
+              </DataTable>
+            )}
+
+            {preview && preview.count === 0 && (
+              <Text
+                value={`No obsolete patches older than ${preview.computedForDays} day(s) for this app.`}
+                size={12}
+                color={Colors.text}
+                style={{ marginTop: 12 }}
+              />
+            )}
           </Flex>
         </TabPanel>
 
