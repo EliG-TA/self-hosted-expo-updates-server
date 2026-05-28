@@ -2,11 +2,9 @@ export type UnknownRecord = Record<string, unknown>
 
 interface PatchCollectionLike {
   updateOne(filter: UnknownRecord, update: UnknownRecord): Promise<unknown>
-  findOneAndUpdate(
-    filter: UnknownRecord,
-    update: UnknownRecord,
-    options?: UnknownRecord,
-  ): Promise<{ value?: unknown } | null>
+  // mongodb driver v6: without `includeResultMetadata: true` this resolves to
+  // the document itself (or null), NOT a `{ value }` ModifyResult wrapper.
+  findOneAndUpdate(filter: UnknownRecord, update: UnknownRecord, options?: UnknownRecord): Promise<UnknownRecord | null>
   find(filter: UnknownRecord): { toArray(): Promise<unknown[]> }
 }
 

@@ -9,6 +9,11 @@ const logger: LoggerLike = loggerDefault
 
 const TICK_INTERVAL_MS = 5000
 const COOLDOWN_MS = 4 * 60 * 60 * 1000 // 4 hours
+// A patch left in 'generating'/'validating' longer than this is assumed
+// orphaned — the worker crashed or the process restarted (e.g. bun --watch)
+// mid-run. Reclaim it so it isn't stuck forever; claim only matches 'pending'
+// otherwise, so without this an interrupted patch never recovers.
+const STALE_INPROGRESS_MS = 5 * 60 * 1000 // 5 minutes
 
 let tickHandle: ReturnType<typeof setInterval> | null = null
 let processing = false
@@ -25,10 +30,15 @@ const claimNextPendingPatch = async (app: AppLike): Promise<PatchWorkerRecord | 
   const collection = app.service('patches').Model
   if (!collection) return null
   const now = new Date()
+  const staleCutoff = new Date(now.getTime() - STALE_INPROGRESS_MS)
   const res = await collection.findOneAndUpdate(
     {
-      status: 'pending',
-      $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now } }],
+      $or: [
+        // Fresh queue item whose cooldown (if any) has elapsed.
+        { status: 'pending', $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now } }] },
+        // Orphaned in-progress item from a crashed/restarted run.
+        { status: { $in: ['generating', 'validating'] }, lastAttemptAt: { $lte: staleCutoff } },
+      ],
     },
     {
       $set: { status: 'generating', lastAttemptAt: now },
@@ -36,11 +46,13 @@ const claimNextPendingPatch = async (app: AppLike): Promise<PatchWorkerRecord | 
     },
     { sort: { createdAt: 1 }, returnDocument: 'after' },
   )
-  return (res?.value as PatchWorkerRecord | undefined) || null
+  // mongodb v6 returns the updated document directly (no `.value` wrapper).
+  return (res as PatchWorkerRecord | null) || null
 }
 
 const markFailed = async (app: AppLike, patch: PatchWorkerRecord, errorMessage: string) => {
   const now = new Date()
+  logger.warn('patches.worker: marking patch failed', { id: patch._id, reason: errorMessage })
   await app.service('patches').patch(patch._id, {
     status: 'failed',
     error: errorMessage,
@@ -51,6 +63,12 @@ const markFailed = async (app: AppLike, patch: PatchWorkerRecord, errorMessage: 
 
 const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
   const generationStartedAt = new Date()
+  logger.info('patches.worker: claimed patch', {
+    id: patchDoc._id,
+    platform: patchDoc.platform,
+    fromUploadId: patchDoc.fromUploadId,
+    toUploadId: patchDoc.toUploadId,
+  })
   let fromUpload: UploadRecord
   let toUpload: UploadRecord
   try {
@@ -62,6 +80,7 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
     await markFailed(app, patchDoc, `upload lookup failed: ${e instanceof Error ? e.message : String(e)}`)
     return
   }
+  logger.info('patches.worker: uploads resolved, running integrity + generation', { id: patchDoc._id })
 
   // Integrity pre-flight — never diff against a broken bundle. The patch
   // would either fail to generate, produce an invalid output, or
@@ -78,9 +97,15 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
   }
 
   // Generation
+  logger.info('patches.worker: starting generatePatch (bsdiff)', { id: patchDoc._id })
   let genResult
   try {
     genResult = await generatePatch(fromUpload, toUpload, patchDoc.platform)
+    logger.info('patches.worker: generatePatch done', {
+      id: patchDoc._id,
+      size: genResult.size,
+      targetSize: genResult.targetSize,
+    })
   } catch (e) {
     logger.error('patches.worker: generation failed', {
       id: patchDoc._id,
@@ -112,6 +137,12 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
   }
 
   const validationCompletedAt = new Date()
+  logger.info('patches.worker: validation result', {
+    id: patchDoc._id,
+    ok: validation.ok,
+    notBeneficial: !!validation.notBeneficial,
+    reason: validation.reason,
+  })
 
   if (!validation.ok) {
     deletePatchFile(genResult.path)

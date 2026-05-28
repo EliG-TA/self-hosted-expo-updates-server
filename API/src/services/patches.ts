@@ -40,6 +40,11 @@ const decideManualEnqueue = (existing?: PatchRecord): 'create' | 'reset' | 'skip
 
 class PatchesService extends MongoDBService {
   app: AppLike
+  // @feathersjs/mongodb stores the collection in `this.options.Model` and only
+  // exposes it via the async `getModel()`. The worker (claimNextPendingPatch)
+  // and asset endpoint ($inc servedCount) need synchronous raw-collection
+  // access, so we mirror it onto a plain instance property here.
+  Model: ReturnType<Db['collection']> | undefined
 
   constructor(options?: Partial<MongoDBAdapterOptions>) {
     super({ Model: undefined, ...options })
@@ -50,6 +55,7 @@ class PatchesService extends MongoDBService {
     ;(app.get('mongoClient') as Promise<Db>).then(async (db) => {
       const collection = db.collection('patches')
       this.options.Model = collection
+      this.Model = collection
       try {
         await collection.createIndex(
           { fromUpdateId: 1, toUpdateId: 1, platform: 1 },

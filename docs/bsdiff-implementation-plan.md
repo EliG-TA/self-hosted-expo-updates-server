@@ -28,7 +28,7 @@ Without this flag, clients never send `A-IM: bsdiff` and the server feature stay
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Library | `@hot-updater/bsdiff` | WASM-based (no node-gyp / Python / C++ toolchain in Docker), purpose-built for RN bspatch flow, emits BSDIFF40 format, built-in Hermes bytecode validation |
+| Library | `@hot-updater/bsdiff` | WASM-based (no node-gyp / Python / C++ toolchain in Docker), purpose-built for RN bspatch flow, emits **ENDSLEY/BSDIFF43** format (the Endsley bsdiff variant — NOT classic BSDIFF40), built-in Hermes bytecode validation |
 | Generation timing | Lazy (on first request) | Zero overhead at publish; first client waits ~1-5s |
 | Cache location | `<update.path>/_patches/from-<fromUpdateId>.patch` | Auto-cleanup when upload deleted |
 | Toggle scope | Per-app (`apps.bsdiffEnabled`) | Canary-style rollout |
@@ -189,7 +189,7 @@ No automatic obsolete cleanup. Disk reclamation is admin-driven via the
 After generating a patch the worker performs three cheap checks:
 
 1. **Library-level success**: `hdiff()` did not throw. This already catches non-Hermes input (`INVALID_HBC`), bytecode-version mismatch, and library-internal `PATCH_FAILED`.
-2. **Magic-bytes check**: patch begins with `BSDIFF40` — the format header that both `ios/EXUpdates/BSPatch/bspatch.c` and `android/.../BSPatch.cpp` expect. Catches truncated / corrupted writes.
+2. **Magic-bytes check**: patch begins with the 16-byte `ENDSLEY/BSDIFF43` header — the format `@hot-updater/bsdiff` actually produces (see its rust src `patch.extend_from_slice(b"ENDSLEY/BSDIFF43")`). Catches truncated / corrupted writes. ⚠️ **Mobile-side verification required:** confirm `expo-updates` SDK 55 on-device bspatch consumes the ENDSLEY/BSDIFF43 variant. If the client expects classic `BSDIFF40`, this library is incompatible and patches will fail to apply on-device (client safely falls back to full download, but the feature yields no savings). Verify against `ios/EXUpdates/BSPatch/*` and the Android equivalent in `work-petsee-new-rn`.
 3. **Benefit check**: `patch.length < 0.75 * target.length` — otherwise the patch is not worth serving (CPU on device + battery for negligible network savings). This is a **permanent terminal state** `not-beneficial` (distinct from `failed`): bundles won't change, regenerating gives the same result. Worker never retries; asset endpoint never serves.
 
 Final sha256 correctness verification is delegated to the client (built into expo-updates SDK 55). All three server checks run in the worker (off the request path).
