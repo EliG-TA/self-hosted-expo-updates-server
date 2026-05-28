@@ -9,6 +9,7 @@ import { Button, Colors, Flex, Input, Spinner, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery } from '../../Services'
 import type { ListResult, PatchRecord, UnknownRecord, UploadRecord } from '../../types'
 import { listFromResult } from '../../types'
+import { UpdateLink } from './updateDetails'
 
 interface UpdateSizes extends UnknownRecord {
   assetsCount?: number
@@ -235,7 +236,7 @@ const CreatePatchControl = ({ uploadId, project }: { uploadId: string; project?:
         <option value="">{sources.length ? 'Select a base update…' : 'No eligible base updates'}</option>
         {sources.map((s2) => (
           <option key={s2._id} value={s2._id}>
-            {`${(s2.updateId || '').slice(0, 8)} · ${s2.status || '—'} · ${s2.platforms.join('+')}${s2.gitCommit ? ` · ${s2.gitCommit.slice(0, 7)}` : ''}`}
+            {`${s2.updateId || '—'} · ${s2.status || '—'} · ${s2.platforms.join('+')}${s2.gitCommit ? ` · ${s2.gitCommit.slice(0, 7)}` : ''}`}
           </option>
         ))}
       </select>
@@ -247,7 +248,17 @@ const CreatePatchControl = ({ uploadId, project }: { uploadId: string; project?:
 const PatchesTab = ({ uploadId, project }: { uploadId: string; project?: string }) => {
   const { data: patches, isSuccess } = useCQuery<ListResult<PatchRecord>>(['patches', project])
   if (!isSuccess) return <Spinner />
-  const related = listFromResult(patches).filter((p) => p.toUploadId === uploadId)
+  // Show patches in BOTH directions for this update:
+  //   inbound  — toUploadId === this (someone upgrades INTO this update)
+  //   outbound — fromUploadId === this (this update is the base for others)
+  // Grouped by From: inbound rows sit under their source groups; outbound
+  // rows collect under this update's own From group.
+  const related = listFromResult(patches)
+    .filter((p) => p.toUploadId === uploadId || p.fromUploadId === uploadId)
+    .sort((a, b) => {
+      const f = String(a.fromUpdateId || '').localeCompare(String(b.fromUpdateId || ''))
+      return f !== 0 ? f : String(a.platform || '').localeCompare(String(b.platform || ''))
+    })
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Delete this patch?')) return
@@ -264,13 +275,25 @@ const PatchesTab = ({ uploadId, project }: { uploadId: string; project?: string 
       <CreatePatchControl uploadId={uploadId} project={project} />
       {!related.length && <Text value="No patches generated yet." size={12} color="rgba(255,255,255,0.5)" />}
       {related.length > 0 && (
-        <DataTable value={related} size="small" style={{ width: '100%' }}>
-          <Column
-            field="fromUpdateId"
-            header="From"
-            body={(row) => <span style={styles.mono}>{row.fromUpdateId?.slice(0, 8) || '—'}</span>}
-          />
+        <DataTable
+          value={related}
+          size="small"
+          style={{ width: '100%' }}
+          rowGroupMode="subheader"
+          groupRowsBy="fromUpdateId"
+          sortField="fromUpdateId"
+          sortOrder={1}
+          rowGroupHeaderTemplate={(row) => (
+            <span style={{ fontSize: 12 }}>
+              <span style={{ color: 'rgba(255,255,255,0.5)', marginRight: 6 }}>From:</span>
+              <UpdateLink updateId={row.fromUpdateId} />
+              {row.fromUploadId === uploadId && (
+                <span style={{ color: Colors.primary, marginLeft: 8, fontSize: 11 }}>(this update — outbound)</span>
+              )}
+            </span>
+          )}>
           <Column field="platform" header="Platform" />
+          <Column header="To" body={(row) => <UpdateLink updateId={row.toUpdateId} />} />
           <Column field="createdAt" header="Date" body={(row) => formatDate(row.createdAt)} />
           <Column field="status" header="Status" body={(row) => <StatusBadge status={row.status} />} />
           <Column field="size" header="Size" body={(row) => getSize(row.size || 0)} />

@@ -3,11 +3,13 @@ import moment from 'moment'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
 import { InputSwitch } from 'primereact/inputswitch'
+import { TabPanel, TabView } from 'primereact/tabview'
 
 import { Button, Card, Colors, ConfirmDialog, Flex, Spinner, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery } from '../../Services'
 import type { AppRecord, ListResult, PatchJobRecord, PatchRecord, ServiceOutcome } from '../../types'
 import { listFromResult } from '../../types'
+import { UpdateLink } from './updateDetails'
 
 const fmtBytes = (n?: number) => {
   if (!n) return '0 B'
@@ -38,6 +40,22 @@ const EVENT_COLORS: Record<string, string> = {
   created: '#4dabf7',
   'status-changed': '#9775fa',
   removed: '#ff6b6b',
+}
+
+// "status-changed" is too wide for the Event pill — show a short label.
+const EVENT_LABELS: Record<string, string> = {
+  created: 'created',
+  'status-changed': 'changed',
+  removed: 'removed',
+}
+
+// Stack long content vertically across 3 lines (value / → / value) instead
+// of one wide line. Full text shown — never clipped.
+const stackCell = {
+  display: 'flex',
+  flexDirection: 'column' as const,
+  alignItems: 'flex-start' as const,
+  gap: 2,
 }
 
 const Pill = ({ value, color }: { value?: string | number; color?: string }) => (
@@ -193,10 +211,12 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
       collapsed
       fadeIn
       style={{ padding: 20, width: '100%', maxWidth: 900, marginTop: 40 }}>
-      <Flex fw as style={{ padding: 10 }}>
-        <Flex row fw style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <Flex row style={{ alignItems: 'center', gap: 10 }}>
-            <Text value="Enable bsdiff patches:" bold />
+      <TabView>
+        <TabPanel header="Management">
+          <Flex fw as style={{ padding: 10 }}>
+            <Flex row fw style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <Flex row style={{ alignItems: 'center', gap: 10 }}>
+                <Text value="Enable bsdiff patches:" bold />
             {saving ? (
               <Spinner />
             ) : (
@@ -321,7 +341,11 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
             <Column
               header="From → To"
               body={(r: ObsoleteCandidate) => (
-                <Text value={`${(r.fromUpdateId || '').slice(0, 8)} → ${(r.toUpdateId || '').slice(0, 8)}`} size={11} />
+                <div style={stackCell}>
+                  <UpdateLink updateId={r.fromUpdateId} />
+                  <span style={{ color: Colors.text }}>→</span>
+                  <UpdateLink updateId={r.toUpdateId} />
+                </div>
               )}
             />
             <Column
@@ -353,64 +377,73 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
           />
         )}
 
-        {/* Job History — append-only event log from patch-jobs */}
-        <Text value="Job History" bold size={14} style={{ marginTop: 32 }} />
-        {!jobsReady && <Spinner />}
-        {jobsReady && (
-          <DataTable
-            value={projectJobs}
-            size="small"
-            paginator
-            rows={15}
-            style={{ width: '100%', marginTop: 8 }}
-            emptyMessage="No history yet">
-            <Column field="at" header="When" body={(r: PatchJobRecord) => fmtDate(r.at)} />
-            <Column
-              field="event"
-              header="Event"
-              body={(r: PatchJobRecord) => <Pill value={r.event} color={EVENT_COLORS[r.event || '']} />}
-            />
-            <Column
-              header="Status"
-              body={(r: PatchJobRecord) => {
-                if (r.event === 'status-changed') {
-                  return (
-                    <Flex row style={{ gap: 4, alignItems: 'center' }}>
-                      <Pill value={r.previousStatus || '—'} color={PATCH_STATUS_COLORS[r.previousStatus || '']} />
-                      <Text value="→" size={11} color={Colors.text} />
-                      <Pill value={r.status || '—'} color={PATCH_STATUS_COLORS[r.status || '']} />
-                    </Flex>
-                  )
-                }
-                if (r.event === 'removed') {
-                  return <Pill value={r.previousStatus || '—'} color={PATCH_STATUS_COLORS[r.previousStatus || '']} />
-                }
-                return <Pill value={r.status || '—'} color={PATCH_STATUS_COLORS[r.status || '']} />
-              }}
-            />
-            <Column field="platform" header="Platform" />
-            <Column
-              header="From → To"
-              body={(r: PatchJobRecord) => (
-                <Text value={`${(r.fromUpdateId || '').slice(0, 8)} → ${(r.toUpdateId || '').slice(0, 8)}`} size={11} />
-              )}
-            />
-            <Column
-              field="attempts"
-              header="Attempts"
-              body={(r: PatchJobRecord) => (r.attempts != null ? String(r.attempts) : '—')}
-            />
-            <Column field="durationMs" header="Duration" body={(r: PatchJobRecord) => fmtMs(r.durationMs)} />
-            <Column field="size" header="Size" body={(r: PatchJobRecord) => fmtBytes(r.size)} />
-            <Column
-              header="Reason / Error"
-              body={(r: PatchJobRecord) => (
-                <Text value={r.error || r.reason || ''} size={11} color={r.error ? '#ff6b6b' : Colors.text} />
-              )}
-            />
-          </DataTable>
-        )}
-      </Flex>
+          </Flex>
+        </TabPanel>
+
+        <TabPanel header="Job History">
+          {!jobsReady && <Spinner />}
+          {jobsReady && (
+            <DataTable
+              value={projectJobs}
+              size="small"
+              paginator
+              rows={15}
+              style={{ width: '100%', marginTop: 8 }}
+              emptyMessage="No history yet">
+              <Column field="at" header="When" body={(r: PatchJobRecord) => fmtDate(r.at)} />
+              <Column
+                field="event"
+                header="Event"
+                body={(r: PatchJobRecord) => (
+                  <Pill value={EVENT_LABELS[r.event || ''] || r.event} color={EVENT_COLORS[r.event || '']} />
+                )}
+              />
+              <Column
+                header="Status"
+                body={(r: PatchJobRecord) => {
+                  if (r.event === 'status-changed') {
+                    return (
+                      <div style={stackCell}>
+                        <Pill value={r.previousStatus || '—'} color={PATCH_STATUS_COLORS[r.previousStatus || '']} />
+                        <span style={{ color: Colors.text }}>→</span>
+                        <Pill value={r.status || '—'} color={PATCH_STATUS_COLORS[r.status || '']} />
+                      </div>
+                    )
+                  }
+                  if (r.event === 'removed') {
+                    return <Pill value={r.previousStatus || '—'} color={PATCH_STATUS_COLORS[r.previousStatus || '']} />
+                  }
+                  return <Pill value={r.status || '—'} color={PATCH_STATUS_COLORS[r.status || '']} />
+                }}
+              />
+              <Column field="platform" header="Platform" />
+              <Column
+                header="From → To"
+                body={(r: PatchJobRecord) => (
+                  <div style={stackCell}>
+                    <UpdateLink updateId={r.fromUpdateId} />
+                    <span style={{ color: Colors.text }}>→</span>
+                    <UpdateLink updateId={r.toUpdateId} />
+                  </div>
+                )}
+              />
+              <Column
+                field="attempts"
+                header="Attempts"
+                body={(r: PatchJobRecord) => (r.attempts != null ? String(r.attempts) : '—')}
+              />
+              <Column field="durationMs" header="Duration" body={(r: PatchJobRecord) => fmtMs(r.durationMs)} />
+              <Column field="size" header="Size" body={(r: PatchJobRecord) => fmtBytes(r.size)} />
+              <Column
+                header="Reason / Error"
+                body={(r: PatchJobRecord) => (
+                  <Text value={r.error || r.reason || ''} size={11} color={r.error ? '#ff6b6b' : Colors.text} />
+                )}
+              />
+            </DataTable>
+          )}
+        </TabPanel>
+      </TabView>
 
       <ConfirmDialog
         visible={confirmingCleanup}

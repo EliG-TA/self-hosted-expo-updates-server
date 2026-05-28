@@ -39,7 +39,8 @@ export const getAvailablePlatforms = (upload): string[] => {
   try {
     const { metadataJson } = getMetadataSync(upload)
     const fm = metadataJson?.fileMetadata || {}
-    return ['ios', 'android'].filter((p) => fm[p]?.bundle)
+    // android first, then ios — drives the manual-enqueue creation order.
+    return ['android', 'ios'].filter((p) => fm[p]?.bundle)
   } catch (e) {
     return []
   }

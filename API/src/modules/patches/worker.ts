@@ -44,7 +44,10 @@ const claimNextPendingPatch = async (app: AppLike): Promise<PatchWorkerRecord | 
       $set: { status: 'generating', lastAttemptAt: now },
       $inc: { attempts: 1 },
     },
-    { sort: { createdAt: 1 }, returnDocument: 'after' },
+    // Secondary _id sort makes claim order deterministic when a batch shares
+    // createdAt (manual enqueue creates android+ios with the same timestamp;
+    // android is inserted first so its ObjectId sorts earlier).
+    { sort: { createdAt: 1, _id: 1 }, returnDocument: 'after' },
   )
   // mongodb v6 returns the updated document directly (no `.value` wrapper).
   return (res as PatchWorkerRecord | null) || null
