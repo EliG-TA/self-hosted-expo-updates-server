@@ -112,6 +112,11 @@ const queries: Record<string, AppQuery> = {
       toUploadId ? FC.service('patches').get('patchSources', { query: { project, toUploadId } }) : null,
     noInitalPrefetch: true,
   },
+  bsdiffSettings: {
+    config: queryConfig.rare,
+    queryFn: () => FC.service('bsdiff-settings').get('global'),
+    noInitalPrefetch: true,
+  },
 }
 
 export const useCQuery = <T = DynamicData>(

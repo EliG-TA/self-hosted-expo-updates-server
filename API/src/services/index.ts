@@ -6,6 +6,7 @@ import type { AppLike, UnknownRecord } from '../types'
 import api from './api'
 import apps from './apps'
 import authentication from './authentication'
+import bsdiffSettings from './bsdiff-settings'
 import clients from './clients'
 import diskUsage from './disk-usage'
 import messages from './messages'
@@ -40,6 +41,7 @@ const services: ServiceModule[] = [
   api,
   apps,
   authentication,
+  bsdiffSettings,
   clients,
   diskUsage,
   messages,

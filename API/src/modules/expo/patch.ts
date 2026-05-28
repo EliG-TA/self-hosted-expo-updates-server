@@ -100,7 +100,7 @@ export const generatePatch = async (fromUpload, toUpload, platform) => {
  * auto-falls back to a full download on mismatch. Duplicating that on the
  * server is dead work.
  */
-export const validatePatch = async ({ patchPath, expectedTargetSize }) => {
+export const validatePatch = async ({ patchPath, expectedTargetSize, benefitRatio = PATCH_BENEFIT_RATIO }) => {
   let patchBuf
   try {
     patchBuf = fs.readFileSync(patchPath)
@@ -118,11 +118,11 @@ export const validatePatch = async ({ patchPath, expectedTargetSize }) => {
     }
   }
 
-  const benefitRatio = patchBuf.length / expectedTargetSize
-  if (benefitRatio >= PATCH_BENEFIT_RATIO) {
+  const actualRatio = patchBuf.length / expectedTargetSize
+  if (actualRatio >= benefitRatio) {
     return {
       ok: false,
-      reason: `not-beneficial: patch is ${(benefitRatio * 100).toFixed(1)}% of target (threshold ${PATCH_BENEFIT_RATIO * 100}%)`,
+      reason: `not-beneficial: patch is ${(actualRatio * 100).toFixed(1)}% of target (threshold ${(benefitRatio * 100).toFixed(1)}%)`,
       notBeneficial: true,
     }
   }

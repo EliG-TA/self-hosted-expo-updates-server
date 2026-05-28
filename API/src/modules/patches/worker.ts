@@ -1,3 +1,5 @@
+import { getBsdiffSettings } from '../../services/bsdiff-settings'
+import type { BsdiffSettings } from '../../services/bsdiff-settings'
 import type { AppLike, LoggerLike, PatchRecord, UploadRecord } from '../../types'
 import { isLaunchBundleHealthy } from '../expo/integrity'
 import { deletePatchFile, generatePatch, validatePatch } from '../expo/patch'
@@ -7,16 +9,16 @@ import loggerDefault from '../logger'
 // feathers.config → patches/worker → modules/index → feathers.config.
 const logger: LoggerLike = loggerDefault
 
-const TICK_INTERVAL_MS = 5000
-const COOLDOWN_MS = 4 * 60 * 60 * 1000 // 4 hours
-// A patch left in 'generating'/'validating' longer than this is assumed
-// orphaned — the worker crashed or the process restarted (e.g. bun --watch)
-// mid-run. Reclaim it so it isn't stuck forever; claim only matches 'pending'
-// otherwise, so without this an interrupted patch never recovers.
-const STALE_INPROGRESS_MS = 5 * 60 * 1000 // 5 minutes
+// Worker tunables (tick cadence, cooldown, stale-reclaim window, concurrency)
+// are live-configurable via the `bsdiff-settings` service and read each tick,
+// so changes take effect without a restart. See services/bsdiff-settings.ts.
 
-let tickHandle: ReturnType<typeof setInterval> | null = null
-let processing = false
+let timer: ReturnType<typeof setTimeout> | null = null
+let started = false
+let stopped = false
+// Number of patches currently being generated. The tick tops this up to the
+// configured concurrency; each in-flight job decrements it when it settles.
+let activeCount = 0
 
 interface PatchWorkerRecord extends PatchRecord {
   platform: string
@@ -26,11 +28,14 @@ interface PatchWorkerRecord extends PatchRecord {
   toUpdateId: string
 }
 
-const claimNextPendingPatch = async (app: AppLike): Promise<PatchWorkerRecord | null> => {
+const claimNextPendingPatch = async (
+  app: AppLike,
+  staleInProgressMs: number,
+): Promise<PatchWorkerRecord | null> => {
   const collection = app.service('patches').Model
   if (!collection) return null
   const now = new Date()
-  const staleCutoff = new Date(now.getTime() - STALE_INPROGRESS_MS)
+  const staleCutoff = new Date(now.getTime() - staleInProgressMs)
   const res = await collection.findOneAndUpdate(
     {
       $or: [
@@ -53,18 +58,18 @@ const claimNextPendingPatch = async (app: AppLike): Promise<PatchWorkerRecord | 
   return (res as PatchWorkerRecord | null) || null
 }
 
-const markFailed = async (app: AppLike, patch: PatchWorkerRecord, errorMessage: string) => {
+const markFailed = async (app: AppLike, patch: PatchWorkerRecord, errorMessage: string, cooldownMs: number) => {
   const now = new Date()
   logger.warn('patches.worker: marking patch failed', { id: patch._id, reason: errorMessage })
   await app.service('patches').patch(patch._id, {
     status: 'failed',
     error: errorMessage,
-    nextAttemptAt: new Date(now.getTime() + COOLDOWN_MS),
+    nextAttemptAt: new Date(now.getTime() + cooldownMs),
     completedAt: now,
   })
 }
 
-const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
+const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord, settings: BsdiffSettings) => {
   const generationStartedAt = new Date()
   logger.info('patches.worker: claimed patch', {
     id: patchDoc._id,
@@ -80,7 +85,7 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
       app.service('uploads').get(patchDoc.toUploadId),
     ])) as [UploadRecord, UploadRecord]
   } catch (e) {
-    await markFailed(app, patchDoc, `upload lookup failed: ${e instanceof Error ? e.message : String(e)}`)
+    await markFailed(app, patchDoc, `upload lookup failed: ${e instanceof Error ? e.message : String(e)}`, settings.cooldownMs)
     return
   }
   logger.info('patches.worker: uploads resolved, running integrity + generation', { id: patchDoc._id })
@@ -90,12 +95,12 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
   // (worst case) silently produce semantically-corrupt bytes.
   const fromHealth = isLaunchBundleHealthy(fromUpload, patchDoc.platform)
   if (!fromHealth.healthy) {
-    await markFailed(app, patchDoc, `FROM bundle integrity: ${fromHealth.blocking.map((b) => b.message).join('; ')}`)
+    await markFailed(app, patchDoc, `FROM bundle integrity: ${fromHealth.blocking.map((b) => b.message).join('; ')}`, settings.cooldownMs)
     return
   }
   const toHealth = isLaunchBundleHealthy(toUpload, patchDoc.platform)
   if (!toHealth.healthy) {
-    await markFailed(app, patchDoc, `TO bundle integrity: ${toHealth.blocking.map((b) => b.message).join('; ')}`)
+    await markFailed(app, patchDoc, `TO bundle integrity: ${toHealth.blocking.map((b) => b.message).join('; ')}`, settings.cooldownMs)
     return
   }
 
@@ -114,7 +119,7 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
       id: patchDoc._id,
       error: e instanceof Error ? e.message : String(e),
     })
-    await markFailed(app, patchDoc, `generation: ${e instanceof Error ? e.message : String(e)}`)
+    await markFailed(app, patchDoc, `generation: ${e instanceof Error ? e.message : String(e)}`, settings.cooldownMs)
     return
   }
 
@@ -132,10 +137,11 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
     validation = await validatePatch({
       patchPath: genResult.path,
       expectedTargetSize: genResult.targetSize,
+      benefitRatio: settings.patchBenefitRatio,
     })
   } catch (e) {
     deletePatchFile(genResult.path)
-    await markFailed(app, patchDoc, `validation crash: ${e instanceof Error ? e.message : String(e)}`)
+    await markFailed(app, patchDoc, `validation crash: ${e instanceof Error ? e.message : String(e)}`, settings.cooldownMs)
     return
   }
 
@@ -160,7 +166,7 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
         completedAt: validationCompletedAt,
       })
     } else {
-      await markFailed(app, patchDoc, validation.reason)
+      await markFailed(app, patchDoc, validation.reason, settings.cooldownMs)
     }
     return
   }
@@ -178,31 +184,49 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord) => {
   })
 }
 
-const tick = async (app: AppLike) => {
-  if (processing) return
-  processing = true
+// Self-rescheduling loop. Reads settings each cycle so tick cadence and
+// concurrency changes apply on the next tick without a restart. Tops the
+// in-flight pool up to `concurrency`, claiming jobs atomically so parallel
+// runs never collide on the same patch.
+const loop = async (app: AppLike) => {
+  if (stopped) return
+  const settings = await getBsdiffSettings(app)
   try {
-    const patchDoc = await claimNextPendingPatch(app)
-    if (!patchDoc) return
-    await processOnePatch(app, patchDoc)
+    while (activeCount < settings.concurrency) {
+      const patchDoc = await claimNextPendingPatch(app, settings.staleInProgressMs)
+      if (!patchDoc) break
+      activeCount++
+      void processOnePatch(app, patchDoc, settings)
+        .catch((e) =>
+          logger.error('patches.worker: processOnePatch crashed', {
+            id: patchDoc._id,
+            error: e instanceof Error ? e.message : String(e),
+          }),
+        )
+        .finally(() => {
+          activeCount--
+        })
+    }
   } catch (e) {
     logger.error('patches.worker: tick crashed', { error: e instanceof Error ? e.message : String(e) })
   } finally {
-    processing = false
+    if (!stopped) timer = setTimeout(() => loop(app), settings.tickIntervalMs)
   }
 }
 
 export const start = (app: AppLike) => {
-  if (tickHandle) return
-  tickHandle = setInterval(() => tick(app), TICK_INTERVAL_MS)
-  logger.info('patches.worker: started', { tickMs: TICK_INTERVAL_MS })
+  if (started) return
+  started = true
+  stopped = false
+  logger.info('patches.worker: started')
+  void loop(app)
 }
 
 export const stop = () => {
-  if (tickHandle) {
-    clearInterval(tickHandle)
-    tickHandle = null
+  stopped = true
+  started = false
+  if (timer) {
+    clearTimeout(timer)
+    timer = null
   }
 }
-
-export { COOLDOWN_MS, tick }

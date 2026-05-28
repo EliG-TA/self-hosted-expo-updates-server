@@ -2,9 +2,9 @@ import * as Err from '@feathersjs/errors'
 import * as fs from 'fs'
 import * as path from 'path'
 
+import { getBsdiffSettings } from '../../services/bsdiff-settings'
 import type { LoggerLike } from '../../types'
 import loggerDefault from '../logger'
-import { COOLDOWN_MS } from '../patches/worker'
 import { isLaunchBundleHealthy } from './integrity'
 import { getLaunchAssetPath } from './patch'
 const logger: LoggerLike = loggerDefault
@@ -193,11 +193,12 @@ const tryHandlePatch = async (app, { query, headers }, fallback) => {
       id: decision.patchDoc._id,
       reason: decision.reason,
     })
+    const { cooldownMs } = await getBsdiffSettings(app)
     patches
       .patch(decision.patchDoc._id, {
         status: 'failed',
         error: decision.reason,
-        nextAttemptAt: new Date(now.getTime() + COOLDOWN_MS),
+        nextAttemptAt: new Date(now.getTime() + cooldownMs),
         path: null,
       })
       .catch((e) => logger.warn('asset.patch: failed to mark failed', { error: e.message }))

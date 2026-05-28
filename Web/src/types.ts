@@ -57,6 +57,14 @@ export interface PatchRecord extends UnknownRecord {
   servedCount?: number
 }
 
+export interface BsdiffSettings extends UnknownRecord {
+  tickIntervalMs?: number
+  cooldownMs?: number
+  staleInProgressMs?: number
+  concurrency?: number
+  patchBenefitRatio?: number
+}
+
 export interface DiskUsageRecord extends UnknownRecord {
   updatesBytes?: number
   patchesBytes?: number

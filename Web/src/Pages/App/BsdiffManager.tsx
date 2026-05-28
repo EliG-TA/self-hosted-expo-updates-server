@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import moment from 'moment'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
@@ -7,7 +7,7 @@ import { TabPanel, TabView } from 'primereact/tabview'
 
 import { Button, Card, Colors, ConfirmDialog, Flex, Spinner, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery } from '../../Services'
-import type { AppRecord, ListResult, PatchJobRecord, PatchRecord, ServiceOutcome } from '../../types'
+import type { AppRecord, BsdiffSettings, ListResult, PatchJobRecord, PatchRecord, ServiceOutcome } from '../../types'
 import { listFromResult } from '../../types'
 import { UpdateLink } from './updateDetails'
 
@@ -127,6 +127,52 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
     enabled: cardOpen && activeTab === 1,
   })
 
+  // Global worker settings (one in-process worker → not per-app). Stored in ms;
+  // shown in friendlier units and converted on save. Loaded only when the tab
+  // is open. The server re-clamps every field, so the inputs' min/max are a
+  // convenience, not the source of truth.
+  const { data: settings } = useCQuery<BsdiffSettings>(['bsdiffSettings'], {
+    enabled: cardOpen && activeTab === 2,
+  })
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [form, setForm] = useState<{
+    tickSec: number
+    cooldownMin: number
+    staleMin: number
+    concurrency: number
+    benefitPct: number
+  } | null>(null)
+
+  useEffect(() => {
+    if (!settings) return
+    setForm({
+      tickSec: (settings.tickIntervalMs ?? 5000) / 1000,
+      cooldownMin: Math.round((settings.cooldownMs ?? 4 * 60 * 60 * 1000) / 60000),
+      staleMin: (settings.staleInProgressMs ?? 5 * 60 * 1000) / 60000,
+      concurrency: settings.concurrency ?? 1,
+      benefitPct: Math.round((settings.patchBenefitRatio ?? 0.75) * 100),
+    })
+  }, [settings])
+
+  const handleSaveSettings = async () => {
+    if (!form) return
+    setSavingSettings(true)
+    try {
+      await FC.client.service('bsdiff-settings').patch('global', {
+        tickIntervalMs: Math.round(form.tickSec * 1000),
+        cooldownMs: Math.round(form.cooldownMin * 60000),
+        staleInProgressMs: Math.round(form.staleMin * 60000),
+        concurrency: Math.round(form.concurrency),
+        patchBenefitRatio: form.benefitPct / 100,
+      })
+      invalidateQuery('bsdiffSettings')
+      window.toast?.show({ severity: 'info', summary: 'Worker settings saved' })
+    } catch (e) {
+      window.toast?.show({ severity: 'error', summary: 'Save failed', detail: e.message })
+    }
+    setSavingSettings(false)
+  }
+
   const stats = useMemo(() => {
     const list = listFromResult(patches)
     const own = list.filter((p) => p.project === project)
@@ -212,6 +258,41 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
     setDeleting(false)
     setConfirmingCleanup(false)
   }
+
+  const numInputStyle = {
+    width: 120,
+    padding: '6px 10px',
+    borderRadius: 4,
+    border: '1px solid rgba(255,255,255,0.2)',
+    background: 'rgba(20,26,37,1)',
+    color: Colors.text,
+    fontSize: 14,
+  }
+  const settingField = (
+    label: string,
+    value: number,
+    onChange: (v: number) => void,
+    bounds: { min: number; max: number; step: number },
+    hint: string,
+  ) => (
+    <Flex as key={label} style={{ minWidth: 180, maxWidth: 220, gap: 2 }}>
+      <Text value={label} size={11} color="rgba(255,255,255,0.5)" />
+      <input
+        type="number"
+        min={bounds.min}
+        max={bounds.max}
+        step={bounds.step}
+        value={value}
+        disabled={savingSettings}
+        onChange={(e) => {
+          const n = parseFloat(e.target.value)
+          onChange(Number.isFinite(n) ? n : 0)
+        }}
+        style={numInputStyle}
+      />
+      <Text value={hint} size={10} color="rgba(255,255,255,0.4)" />
+    </Flex>
+  )
 
   return (
     <Card
@@ -459,6 +540,67 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
               />
             </DataTable>
           )}
+        </TabPanel>
+
+        <TabPanel header="Worker settings">
+          <Flex fw as style={{ padding: 10, gap: 16 }}>
+            <Text value="Global bsdiff worker settings" bold size={14} />
+            <Text
+              value="These apply to the whole server (one background worker), not just this app. Changes take effect on the next worker tick — no restart needed."
+              size={12}
+              color="rgba(255,255,255,0.6)"
+            />
+            {!form ? (
+              <Spinner />
+            ) : (
+              <>
+                <Flex row fw style={{ gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  {settingField(
+                    'Tick interval (s)',
+                    form.tickSec,
+                    (v) => setForm({ ...form, tickSec: v }),
+                    { min: 0.5, max: 600, step: 0.5 },
+                    'How often the worker polls the queue',
+                  )}
+                  {settingField(
+                    'Concurrency',
+                    form.concurrency,
+                    (v) => setForm({ ...form, concurrency: v }),
+                    { min: 1, max: 8, step: 1 },
+                    'Patches built in parallel (CPU + RAM heavy)',
+                  )}
+                  {settingField(
+                    'Failure cooldown (min)',
+                    form.cooldownMin,
+                    (v) => setForm({ ...form, cooldownMin: v }),
+                    { min: 0, max: 10080, step: 1 },
+                    'Wait before retrying a failed patch',
+                  )}
+                  {settingField(
+                    'Stale reclaim (min)',
+                    form.staleMin,
+                    (v) => setForm({ ...form, staleMin: v }),
+                    { min: 0.5, max: 1440, step: 0.5 },
+                    'Reclaim an in-progress patch stuck this long',
+                  )}
+                  {settingField(
+                    'Max patch size (% of bundle)',
+                    form.benefitPct,
+                    (v) => setForm({ ...form, benefitPct: v }),
+                    { min: 5, max: 100, step: 1 },
+                    'Above this the patch is marked not-beneficial',
+                  )}
+                </Flex>
+                <Flex row style={{ gap: 10 }}>
+                  {savingSettings ? (
+                    <Spinner />
+                  ) : (
+                    <Button icon="save" label="Save settings" onClick={handleSaveSettings} />
+                  )}
+                </Flex>
+              </>
+            )}
+          </Flex>
         </TabPanel>
       </TabView>
 
