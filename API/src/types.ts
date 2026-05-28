@@ -23,6 +23,7 @@ export interface AppService {
   getObsoleteCandidates?(data?: unknown): Promise<unknown>
   getPatchSources?(data?: unknown): Promise<unknown>
   enqueuePatch?(data?: unknown): Promise<unknown>
+  reconcileBenefitRatio?(newRatio: number): Promise<unknown>
   hooks?(hooks: UnknownRecord): void
   Model?: PatchCollectionLike
   publish?(event: string, callback: (data: unknown, context: UnknownRecord) => unknown): void

@@ -21,7 +21,9 @@ export interface GenerationJob {
 
 export type GenerationResult =
   | { outcome: 'ready'; path: string; size: number; targetSize: number; compressionRatio: number }
-  | { outcome: 'not-beneficial'; reason: string }
+  // size/targetSize/compressionRatio are persisted so a later benefit-ratio
+  // change can re-judge the patch without regenerating it.
+  | { outcome: 'not-beneficial'; reason: string; size: number; targetSize: number; compressionRatio: number }
   | { outcome: 'failed'; error: string }
 
 const run = async (job: GenerationJob): Promise<GenerationResult> => {
@@ -57,7 +59,15 @@ const run = async (job: GenerationJob): Promise<GenerationResult> => {
 
   if (!validation.ok) {
     deletePatchFile(gen.path)
-    if (validation.notBeneficial) return { outcome: 'not-beneficial', reason: validation.reason }
+    if (validation.notBeneficial) {
+      return {
+        outcome: 'not-beneficial',
+        reason: validation.reason,
+        size: gen.size,
+        targetSize: gen.targetSize,
+        compressionRatio: gen.size / gen.targetSize,
+      }
+    }
     return { outcome: 'failed', error: validation.reason }
   }
 

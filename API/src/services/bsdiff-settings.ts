@@ -115,6 +115,10 @@ const createService = (defaultOptions?: Partial<MongoDBAdapterOptions>) =>
 const sanitizeOnPatch = async (context: HookContextLike) => {
   const current = ((await context.service.Model?.findOne({ _id: DOC_ID })) ||
     BSDIFF_SETTINGS_DEFAULTS) as Partial<BsdiffSettings>
+  // Stash the pre-change ratio so the after-hook can detect a real change and
+  // reconcile existing patches (see reconcileIfRatioChanged).
+  const params = (context.params || (context.params = {})) as UnknownRecord
+  params._prevBenefitRatio = current.patchBenefitRatio
   const incoming = (context.data as Partial<BsdiffSettings>) || {}
   context.data = { ...clampBsdiffSettings({ ...current, ...incoming }), updatedAt: new Date() } as UnknownRecord
   return context
@@ -122,6 +126,22 @@ const sanitizeOnPatch = async (context: HookContextLike) => {
 
 const broadcastChange = (context: HookContextLike) => {
   context.app.service('messages').create({ action: 'update', keys: ['bsdiffSettings'] })
+  return context
+}
+
+// A benefitRatio change must take effect on EXISTING patches right away, not
+// only on the next generation: re-judge ready ↔ not-beneficial. Fire-and-forget
+// so the settings save responds immediately (reconcile can touch many patches).
+const reconcileIfRatioChanged = (context: HookContextLike) => {
+  const prev = (context.params as UnknownRecord | undefined)?._prevBenefitRatio as number | undefined
+  const next = (context.result as Partial<BsdiffSettings> | undefined)?.patchBenefitRatio
+  if (typeof next === 'number' && prev !== next) {
+    void Promise.resolve(context.app.service('patches').reconcileBenefitRatio?.(next)).catch((e) =>
+      logger.warn('bsdiff-settings: patch reconcile failed', {
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    )
+  }
   return context
 }
 
@@ -137,7 +157,7 @@ export default {
       remove: [s.externalMethodNotAllowed],
     },
     after: {
-      patch: [broadcastChange],
+      patch: [broadcastChange, reconcileIfRatioChanged],
     },
   },
 }

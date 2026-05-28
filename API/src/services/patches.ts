@@ -292,6 +292,63 @@ class PatchesService extends MongoDBService {
     this.app.service('messages').create({ action: 'update', keys: ['patches', 'patchJobs', 'diskUsage'] })
     return { removed }
   }
+
+  // Re-judge existing patches against a NEW benefit ratio so a settings change
+  // takes effect immediately, not only on the next generation:
+  //  - a 'ready' patch that no longer clears the threshold → 'not-beneficial'
+  //    (its file is deleted; the asset endpoint must stop serving it)
+  //  - a 'not-beneficial' patch that now clears it → 'pending' (regenerate; the
+  //    file was deleted when first rejected, so it must be rebuilt)
+  // Patches with no stored compressionRatio (legacy) are left untouched.
+  async reconcileBenefitRatio(newRatio: number) {
+    const col = this.Model
+    if (!col || typeof newRatio !== 'number') return { reclassified: 0, requeued: 0 }
+
+    const demote = (await col
+      .find({ status: 'ready', compressionRatio: { $gte: newRatio } })
+      .toArray()) as unknown as PatchRecord[]
+    let reclassified = 0
+    for (const p of demote) {
+      try {
+        deletePatchFile(p.path)
+        await this.patch(p._id, {
+          status: 'not-beneficial',
+          path: null,
+          nextAttemptAt: null,
+          error: `reclassified: ${((p.compressionRatio as number) * 100).toFixed(1)}% ≥ ${(newRatio * 100).toFixed(1)}% threshold`,
+          completedAt: new Date(),
+        })
+        reclassified++
+      } catch (e) {
+        logger.warn('patches.reconcile: demote failed', {
+          id: p._id,
+          error: e instanceof Error ? e.message : String(e),
+        })
+      }
+    }
+
+    const requeue = (await col
+      .find({ status: 'not-beneficial', compressionRatio: { $lt: newRatio, $ne: null } })
+      .toArray()) as unknown as PatchRecord[]
+    let requeued = 0
+    for (const p of requeue) {
+      try {
+        await this.patch(p._id, { status: 'pending', nextAttemptAt: null, error: null, completedAt: null })
+        requeued++
+      } catch (e) {
+        logger.warn('patches.reconcile: requeue failed', {
+          id: p._id,
+          error: e instanceof Error ? e.message : String(e),
+        })
+      }
+    }
+
+    if (reclassified || requeued) {
+      this.app.service('messages').create({ action: 'update', keys: ['patches', 'patchJobs', 'diskUsage'] })
+    }
+    logger.info('patches.reconcile: benefit ratio applied', { newRatio, reclassified, requeued })
+    return { reclassified, requeued }
+  }
 }
 
 const createService = (defaultOptions?: Partial<MongoDBAdapterOptions>) =>

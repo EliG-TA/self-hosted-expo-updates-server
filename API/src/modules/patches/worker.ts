@@ -131,6 +131,11 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord, settin
       error: result.reason,
       nextAttemptAt: null,
       path: null,
+      // Persist the metrics so a later benefitRatio change can re-judge this
+      // patch (reconcileBenefitRatio) without regenerating it.
+      size: result.size,
+      targetBundleSize: result.targetSize,
+      compressionRatio: result.compressionRatio,
       completedAt: new Date(),
     })
     return

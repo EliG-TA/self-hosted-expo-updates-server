@@ -588,7 +588,7 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
                     form.benefitPct,
                     (v) => setForm({ ...form, benefitPct: v }),
                     { min: 5, max: 100, step: 1 },
-                    'Above this the patch is marked not-beneficial',
+                    'Above this the patch is not-beneficial. Saving re-judges existing patches (ready ↔ not-beneficial).',
                   )}
                 </Flex>
                 <Flex row style={{ gap: 10 }}>
