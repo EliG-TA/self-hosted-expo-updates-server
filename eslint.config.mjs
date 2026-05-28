@@ -16,6 +16,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/build/**',
       '**/coverage/**',
+      'API/vendor/**',
       'API/uploads/**',
       'API/certs/**',
       'Web/public/env-config.js',

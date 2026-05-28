@@ -3,4 +3,8 @@ Dockerfile
 Dockerfile.dev
 .dockerignore
 
-
+# Vendored @hot-updater/bsdiff fork: build artifacts are produced in the
+# Docker build stage, never copied from the host context.
+vendor/bsdiff/dist
+vendor/bsdiff/bsdiff.tgz
+vendor/bsdiff/rust/hdiff-wasm/target

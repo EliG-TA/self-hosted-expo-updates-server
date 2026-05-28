@@ -14,7 +14,7 @@
         "@feathersjs/feathers": "^5.0.44",
         "@feathersjs/mongodb": "^5.0.44",
         "@feathersjs/socketio": "^5.0.44",
-        "@hot-updater/bsdiff": "^0.32.0",
+        "@hot-updater/bsdiff": "file:./vendor/bsdiff/bsdiff.tgz",
         "compression": "^1.8.1",
         "cors": "^2.8.6",
         "dauria": "^2.0.0",
@@ -76,7 +76,7 @@
 
     "@hapi/bourne": ["@hapi/bourne@3.0.0", "", {}, "sha512-Waj1cwPXJDucOib4a3bAISsKJVb15MKi9IvmTI/7ssVEm6sywXGjVJDhl6/umt1pK1ZS7PacXU3A1PmFKHEZ2w=="],
 
-    "@hot-updater/bsdiff": ["@hot-updater/bsdiff@0.32.0", "", {}, "sha512-a6n5N0jdze+id2zAM2yMlwjJw53pFbbh2iWkpOAjsZxdvBYznq4uxNt/MQG8aQhn8McZc+QNcSuCI2svnVrfAQ=="],
+    "@hot-updater/bsdiff": ["@hot-updater/bsdiff@./vendor/bsdiff/bsdiff.tgz", {}, "sha512-kAJGb6g7BSS+Bi9Cy68+CVMdp5YKzALxpy1sOXhCiHcXtGfmcWeOOnV4wZTnSXJXo2qRJU4Yz6w2ZpicTvpcWA=="],
 
     "@koa/cors": ["@koa/cors@5.0.0", "", { "dependencies": { "vary": "^1.1.2" } }, "sha512-x/iUDjcS90W69PryLDIMgFyV21YLTnG9zOpPXS7Bkt2b8AsY3zZsIpOLBkYr9fBcF3HbkKaER5hOBZLfpLgYNw=="],
 

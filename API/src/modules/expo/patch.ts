@@ -6,11 +6,12 @@ import { getMetadataSync } from './helpers'
 
 const PATCH_BENEFIT_RATIO = 0.75
 const PATCH_DIR_NAME = '_patches'
-// @hot-updater/bsdiff emits the Endsley bsdiff variant, whose 16-byte header
-// is "ENDSLEY/BSDIFF43" (see node_modules/@hot-updater/bsdiff rust src:
-// `patch.extend_from_slice(b"ENDSLEY/BSDIFF43")`). NOT the classic 8-byte
-// "BSDIFF40". The magic check must match what the library actually produces.
-const BSDIFF_MAGIC = Buffer.from('ENDSLEY/BSDIFF43', 'utf8')
+// Our vendored fork of @hot-updater/bsdiff (API/vendor/bsdiff) emits the
+// classic 8-byte "BSDIFF40" magic — the format expo-updates' on-device
+// bspatch.c hard-requires (memcmp "BSDIFF40", 32-byte header, three bzip2
+// streams). The upstream npm package emits ENDSLEY/BSDIFF43, which the client
+// cannot apply; see API/vendor/bsdiff/README.md.
+const BSDIFF_MAGIC = Buffer.from('BSDIFF40', 'utf8')
 
 let hdiffPromise = null
 const loadHdiff = () => {
@@ -113,7 +114,7 @@ export const validatePatch = async ({ patchPath, expectedTargetSize }) => {
   if (!patchBuf.subarray(0, BSDIFF_MAGIC.length).equals(BSDIFF_MAGIC)) {
     return {
       ok: false,
-      reason: `magic mismatch: expected ENDSLEY/BSDIFF43 header`,
+      reason: `magic mismatch: expected BSDIFF40 header`,
     }
   }
 

@@ -28,7 +28,8 @@ Without this flag, clients never send `A-IM: bsdiff` and the server feature stay
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Library | `@hot-updater/bsdiff` | WASM-based (no node-gyp / Python / C++ toolchain in Docker), purpose-built for RN bspatch flow, emits **ENDSLEY/BSDIFF43** format (the Endsley bsdiff variant — NOT classic BSDIFF40), built-in Hermes bytecode validation |
+| Library | **vendored fork** of `@hot-updater/bsdiff` (`API/vendor/bsdiff`) | Upstream emits ENDSLEY/BSDIFF43, which expo-updates' on-device `bspatch.c` cannot apply. Our fork changes only the Rust patch container to emit **classic BSDIFF40** (8-byte magic + 32-byte header + 3 separate bzip2 streams) — exactly what the client requires. Still pure-Rust WASM (no node-gyp / Python / C++ toolchain; `bsdiff` + `bzip2 0.6`/`libbz2-rs-sys`), built-in Hermes bytecode validation retained. See `API/vendor/bsdiff/README.md`. |
+| Fork packaging | Build `dist/` in Docker, install as `.tgz` | `dist/` is not committed (only TS `src/` + the prebuilt `assets/hdiff.wasm`). Prod `API/Dockerfile` has a `bsdiff` build stage (`bun run build` → `bun pm pack`); the runtime stage installs the tarball via `file:./vendor/bsdiff/bsdiff.tgz`. Dev `docker-entrypoint.sh` builds+packs before `bun install`. tsdown output is deterministic, so the tgz hash matches `bun.lock` across macOS/linux and `--frozen-lockfile` holds. |
 | Generation timing | Lazy (on first request) | Zero overhead at publish; first client waits ~1-5s |
 | Cache location | `<update.path>/_patches/from-<fromUpdateId>.patch` | Auto-cleanup when upload deleted |
 | Toggle scope | Per-app (`apps.bsdiffEnabled`) | Canary-style rollout |
@@ -113,7 +114,11 @@ Add field: `bsdiffEnabled: Boolean` (default `false`).
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `API/package.json` | edit | Add `@hot-updater/bsdiff` dependency |
+| `API/package.json` | edit | Depend on the fork via `file:./vendor/bsdiff/bsdiff.tgz` |
+| `API/vendor/bsdiff/**` | **new** | Vendored BSDIFF40 fork (TS `src/`, Rust, prebuilt wasm, build config); `dist/`/`*.tgz`/Cargo.lock gitignored |
+| `API/Dockerfile` | edit | Multi-stage: `bsdiff` build stage packs the fork tarball; runtime installs it |
+| `API/Dockerfile.dev` / `API/docker-entrypoint.sh` | edit | Entrypoint builds+packs the fork tarball before `bun install` |
+| `API/.dockerignore` | edit | Exclude vendor build artifacts (`dist`, `bsdiff.tgz`, rust `target`) |
 | `API/src/modules/expo/patch.js` | **new** | bsdiff generation, application, validation |
 | `API/src/modules/patches/worker.js` | **new** | Background queue worker + cleanup job |
 | `API/src/modules/patches/index.js` | **new** | Worker bootstrap |
@@ -189,7 +194,7 @@ No automatic obsolete cleanup. Disk reclamation is admin-driven via the
 After generating a patch the worker performs three cheap checks:
 
 1. **Library-level success**: `hdiff()` did not throw. This already catches non-Hermes input (`INVALID_HBC`), bytecode-version mismatch, and library-internal `PATCH_FAILED`.
-2. **Magic-bytes check**: patch begins with the 16-byte `ENDSLEY/BSDIFF43` header — the format `@hot-updater/bsdiff` actually produces (see its rust src `patch.extend_from_slice(b"ENDSLEY/BSDIFF43")`). Catches truncated / corrupted writes. ⚠️ **Mobile-side verification required:** confirm `expo-updates` SDK 55 on-device bspatch consumes the ENDSLEY/BSDIFF43 variant. If the client expects classic `BSDIFF40`, this library is incompatible and patches will fail to apply on-device (client safely falls back to full download, but the feature yields no savings). Verify against `ios/EXUpdates/BSPatch/*` and the Android equivalent in `work-petsee-new-rn`.
+2. **Magic-bytes check**: patch begins with the 8-byte `BSDIFF40` header — the format our vendored fork produces and the format expo-updates' on-device `bspatch.c` requires. Catches truncated / corrupted writes. ✅ **Mobile-side compatibility verified:** the actual expo-updates `ios/EXUpdates/BSPatch/bspatch.c` (byte-identical to the Android `vendor/bspatch/bspatch.c`) was compiled and used to apply a forked patch — the reconstructed bundle was sha256-identical to the target. (Upstream `@hot-updater/bsdiff` emitted ENDSLEY/BSDIFF43, which the client cannot apply — that was the reason for the fork.)
 3. **Benefit check**: `patch.length < 0.75 * target.length` — otherwise the patch is not worth serving (CPU on device + battery for negligible network savings). This is a **permanent terminal state** `not-beneficial` (distinct from `failed`): bundles won't change, regenerating gives the same result. Worker never retries; asset endpoint never serves.
 
 Final sha256 correctness verification is delegated to the client (built into expo-updates SDK 55). All three server checks run in the worker (off the request path).
