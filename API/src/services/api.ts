@@ -110,7 +110,7 @@ export default {
     const protocolVersion = req.headers['expo-protocol-version']
 
     if (res.data.type === 'manifest') return handleManifestResponse(res, protocolVersion)
-    if (res.data.type === 'asset') return handleAssetResponse(res)
+    if (res.data.type === 'asset' || res.data.type === 'patch') return handleAssetResponse(res)
     next()
   },
   hooks: {

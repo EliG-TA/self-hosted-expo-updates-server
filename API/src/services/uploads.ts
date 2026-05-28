@@ -20,7 +20,7 @@ const cascadeRemovePatches = async (context: HookContextLike) => {
     for (const doc of docs) {
       deletePatchFile(doc.path)
       try {
-        await patches.remove(doc._id)
+        await patches.remove(doc._id, { reason: 'upload-removed' })
       } catch (e) {
         /* already gone */
       }

@@ -14,6 +14,13 @@ const security = {
   methodNotAllowed: (context: HookContextLike) => {
     throw new Err.MethodNotAllowed('Method is not allowed')
   },
+  // Same as methodNotAllowed but lets internal (server-side) callers through.
+  // Use when external HTTP clients must be blocked but worker/service code
+  // still needs to invoke the method.
+  externalMethodNotAllowed: (context: HookContextLike) => {
+    if (security.isLocal(context)) return context
+    throw new Err.MethodNotAllowed('Method is not allowed')
+  },
   // Only Admin can do broad patch / update / delete
   preventGlobalUpdates: (context: HookContextLike) => {
     if (security.isLocal(context)) return context

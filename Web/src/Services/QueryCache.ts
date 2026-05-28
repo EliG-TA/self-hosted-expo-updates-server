@@ -102,7 +102,7 @@ const queries: Record<string, AppQuery> = {
     config: queryConfig.frequent,
     queryFn: (key, project) =>
       FC.service('patch-jobs').find({
-        query: { ...(project ? { project } : {}), $sort: { startedAt: -1 }, $limit: 200 },
+        query: { ...(project ? { project } : {}), $sort: { at: -1 }, $limit: 500 },
       }),
     noInitalPrefetch: true,
   },

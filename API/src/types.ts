@@ -20,6 +20,8 @@ export interface AppService {
   _create?(data?: unknown, params?: UnknownRecord): Promise<unknown>
   _patch?(id: unknown, data?: unknown, params?: UnknownRecord): Promise<unknown>
   purgeAll?(data?: unknown): Promise<unknown>
+  cleanupObsolete?(data?: unknown): Promise<unknown>
+  getObsoleteCandidates?(data?: unknown): Promise<unknown>
   hooks?(hooks: UnknownRecord): void
   Model?: PatchCollectionLike
   publish?(event: string, callback: (data: unknown, context: UnknownRecord) => unknown): void

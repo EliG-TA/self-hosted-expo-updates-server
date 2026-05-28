@@ -9,6 +9,12 @@ import type { AppLike, HookContextLike } from '../types'
 
 const TTL_SECONDS = 30 * 24 * 60 * 60 // 30 days
 
+// Append-only event log of state changes on `patches`. One row per event:
+//   - 'created'         — a new patch row was enqueued
+//   - 'status-changed'  — patches.status went prev → next
+//   - 'removed'         — patch row was deleted (with reason: purge | cleanup-obsolete | upload-removed | manual)
+// Rows are written automatically by hooks on the `patches` service so audit
+// coverage stays exhaustive without scattering log() calls through the code.
 class PatchJobsService extends MongoDBService {
   app: AppLike
 
@@ -22,9 +28,9 @@ class PatchJobsService extends MongoDBService {
       const collection = db.collection('patch-jobs')
       this.options.Model = collection
       try {
-        await collection.createIndex({ startedAt: 1 }, { expireAfterSeconds: TTL_SECONDS, name: 'ttl_startedAt' })
-        await collection.createIndex({ project: 1, startedAt: -1 })
-        await collection.createIndex({ patchId: 1 })
+        await collection.createIndex({ at: 1 }, { expireAfterSeconds: TTL_SECONDS, name: 'ttl_at' })
+        await collection.createIndex({ project: 1, at: -1 })
+        await collection.createIndex({ patchId: 1, at: -1 })
       } catch (e) {
         logger.warn('patch-jobs: failed to create indexes', { error: e instanceof Error ? e.message : String(e) })
       }
@@ -47,10 +53,12 @@ export default {
       all: s.defaultSecurity(),
       find: [],
       get: [],
-      create: [],
+      // Internal-only: rows are written by `patches` service hooks. Forbid
+      // external clients from spoofing audit entries.
+      create: [s.externalMethodNotAllowed],
       update: [s.methodNotAllowed],
       patch: [s.methodNotAllowed],
-      remove: [],
+      remove: [s.externalMethodNotAllowed],
     },
     after: {
       all: [],

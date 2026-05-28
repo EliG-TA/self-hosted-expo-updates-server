@@ -88,16 +88,21 @@ export interface IntegrityRecord extends UnknownRecord {
 
 export interface PatchJobRecord extends UnknownRecord {
   _id?: string
+  patchId?: string
   project?: string | null
-  type?: string
-  status?: string
   platform?: string
-  startedAt?: string | Date
-  durationMs?: number
   fromUpdateId?: string
   toUpdateId?: string
+  // One row per event: created | status-changed | removed
+  event?: 'created' | 'status-changed' | 'removed' | string
+  status?: string // new status (for status-changed) / initial status (for created)
+  previousStatus?: string
+  attempts?: number
+  durationMs?: number
+  size?: number
   error?: string
-  reason?: string
+  reason?: string // for removed: manual-purge | cleanup-obsolete | upload-removed | manual
+  at?: string | Date
 }
 
 export interface FlexProps extends React.HTMLAttributes<HTMLDivElement> {

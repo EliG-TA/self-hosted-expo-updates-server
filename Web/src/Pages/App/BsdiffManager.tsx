@@ -4,7 +4,7 @@ import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
 import { InputSwitch } from 'primereact/inputswitch'
 
-import { Button, Card, Colors, Flex, Spinner, Text } from '../../Components'
+import { Button, Card, Colors, ConfirmDialog, Flex, Spinner, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery } from '../../Services'
 import type { AppRecord, ListResult, PatchJobRecord, PatchRecord, ServiceOutcome } from '../../types'
 import { listFromResult } from '../../types'
@@ -25,18 +25,19 @@ const fmtMs = (ms?: number) => {
 
 const fmtDate = (d?: string | Date) => (d ? moment(d).format('YYYY-MM-DD HH:mm:ss') : '—')
 
-const JOB_STATUS_COLORS = {
-  queued: '#9e9e9e',
-  running: '#42a5f5',
-  success: '#4caf50',
+const PATCH_STATUS_COLORS: Record<string, string> = {
+  pending: '#9e9e9e',
+  generating: '#42a5f5',
+  validating: '#9775fa',
+  ready: '#4caf50',
   failed: '#ef5350',
+  'not-beneficial': '#ffa94d',
 }
 
-const JOB_TYPE_COLORS = {
-  generate: '#4dabf7',
-  validate: '#9775fa',
-  delete: '#ffa94d',
-  purge: '#ff6b6b',
+const EVENT_COLORS: Record<string, string> = {
+  created: '#4dabf7',
+  'status-changed': '#9775fa',
+  removed: '#ff6b6b',
 }
 
 const Pill = ({ value, color }: { value?: string | number; color?: string }) => (
@@ -53,10 +54,48 @@ const Pill = ({ value, color }: { value?: string | number; color?: string }) => 
   </span>
 )
 
+type ObsoleteCandidate = {
+  _id: string
+  platform?: string
+  fromUpdateId?: string
+  toUpdateId?: string
+  size?: number
+  status?: string
+  servedCount?: number
+  createdAt?: string | Date
+  toUpload?: {
+    _id?: string
+    version?: string
+    releaseChannel?: string
+    createdAt?: string | Date
+    gitCommit?: string
+  } | null
+}
+
+type ObsoletePreview = {
+  candidates: ObsoleteCandidate[]
+  totalBytes: number
+  count: number
+  computedForDays: number
+}
+
+type CleanupOutcome = ServiceOutcome & {
+  count?: number
+  totalBytes?: number
+  computedForDays?: number
+  errors?: Array<{ id: unknown; error: string }>
+}
+
 export const BsdiffManager = ({ app }: { app: AppRecord }) => {
   const project = app?._id
   const [saving, setSaving] = useState(false)
   const [purging, setPurging] = useState(false)
+  const [olderThanDays, setOlderThanDays] = useState<number>(7)
+  const [calculating, setCalculating] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [preview, setPreview] = useState<ObsoletePreview | null>(null)
+  const [confirmingCleanup, setConfirmingCleanup] = useState(false)
+  const [confirmingPurge, setConfirmingPurge] = useState(false)
 
   const { data: patches, isSuccess: patchesReady } = useCQuery<ListResult<PatchRecord>>(['patches', project])
   const { data: jobs, isSuccess: jobsReady } = useCQuery<ListResult<PatchJobRecord>>(['patchJobs', project])
@@ -74,6 +113,11 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
     return { count: own.length, totalSize, totalServed, byStatus }
   }, [patches, project])
 
+  const projectJobs = useMemo(() => {
+    const list = listFromResult(jobs)
+    return list.filter((j) => !project || j.project === project || j.project == null)
+  }, [jobs, project])
+
   const handleToggle = async (value: boolean) => {
     setSaving(true)
     try {
@@ -87,22 +131,60 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
   }
 
   const handlePurge = async () => {
-    if (!window.confirm('Delete ALL patches for this app? This cannot be undone.')) return
     setPurging(true)
     try {
       const res = (await FC.client.service('patches').update('purgeAll', { project })) as ServiceOutcome
       invalidateQuery(['patches', 'patchJobs', 'diskUsage'])
+      setPreview(null)
       window.toast?.show({ severity: 'info', summary: `Purged ${res?.removed || 0} patches` })
     } catch (e) {
       window.toast?.show({ severity: 'error', summary: 'Purge failed', detail: e.message })
     }
     setPurging(false)
+    setConfirmingPurge(false)
   }
 
-  const projectJobs = useMemo(() => {
-    const list = listFromResult(jobs)
-    return list.filter((j) => !project || j.project === project || j.project === null)
-  }, [jobs, project])
+  // Phase 1: GET candidates for the chosen window. The result populates the
+  // preview table and totals so the admin sees exactly what will be deleted
+  // before they confirm. Mirrors ReleaseManager.cleanupOldUpdates.
+  const handleCalculate = async (days: number) => {
+    setCalculating(true)
+    try {
+      const res = (await FC.client
+        .service('patches')
+        .get('obsoleteCandidates', { query: { project, olderThanDays: days } })) as ObsoletePreview
+      setPreview(res || { candidates: [], totalBytes: 0, count: 0, computedForDays: days })
+    } catch (e) {
+      window.toast?.show({ severity: 'error', summary: 'Calculate failed', detail: e.message })
+    }
+    setCalculating(false)
+  }
+
+  // Phase 2: re-runs the same query server-side (instead of trusting the
+  // preview blindly) and deletes. Re-fetches the preview after so the table
+  // shows the post-cleanup state — typically zero candidates.
+  const handleConfirmCleanup = async () => {
+    if (!preview?.count) return
+    const days = preview.computedForDays
+    setDeleting(true)
+    try {
+      const res = (await FC.client
+        .service('patches')
+        .update('cleanupObsolete', { project, olderThanDays: days })) as CleanupOutcome
+      invalidateQuery(['patches', 'patchJobs', 'diskUsage'])
+      const errorCount = res?.errors?.length || 0
+      window.toast?.show({
+        severity: errorCount ? 'warn' : 'info',
+        summary: `Removed ${res?.removed || 0} obsolete patches`,
+        detail: `Freed ${fmtBytes(res?.totalBytes || 0)}${errorCount ? ` · ${errorCount} error(s)` : ''}`,
+      })
+      await handleCalculate(days)
+    } catch (e) {
+      window.toast?.show({ severity: 'error', summary: 'Cleanup failed', detail: e.message })
+    }
+    setDeleting(false)
+    setConfirmingCleanup(false)
+  }
 
   return (
     <Card
@@ -153,11 +235,126 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
           ))}
         </Flex>
 
-        <Flex row fw style={{ marginTop: 16 }}>
-          {purging ? <Spinner /> : <Button icon="trash" label="Purge all patches for this app" onClick={handlePurge} />}
+        {/* Cleanup obsolete patches — two-phase like ReleaseManager.cleanupOldUpdates */}
+        <Text value="Cleanup obsolete patches" bold size={14} style={{ marginTop: 24 }} />
+        <Text
+          value="Delete patches whose target update has been set to 'obsolete' and is older than the window below. A patch from an obsolete bundle to a current release is NOT deleted — clients stuck on old bundles still benefit from it."
+          size={12}
+          color="rgba(255,255,255,0.6)"
+        />
+
+        <Flex row style={{ gap: 12, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+          <Flex as>
+            <Text value="Window (days)" size={11} color="rgba(255,255,255,0.5)" />
+            <input
+              type="number"
+              min={0}
+              max={365}
+              value={olderThanDays}
+              disabled={calculating || deleting}
+              onChange={(e) => setOlderThanDays(Math.max(0, parseInt(e.target.value) || 0))}
+              style={{
+                width: 80,
+                padding: '6px 10px',
+                borderRadius: 4,
+                border: '1px solid rgba(255,255,255,0.2)',
+                background: 'rgba(20,26,37,1)',
+                color: Colors.text,
+                fontSize: 14,
+              }}
+            />
+          </Flex>
+          {preview && (
+            <>
+              <Flex as>
+                <Text value="Candidates" size={11} color="rgba(255,255,255,0.5)" />
+                <Text value={String(preview.count)} bold size={20} />
+              </Flex>
+              <Flex as>
+                <Text value="Space to free" size={11} color="rgba(255,255,255,0.5)" />
+                <Text value={fmtBytes(preview.totalBytes)} bold size={20} />
+              </Flex>
+            </>
+          )}
         </Flex>
 
-        <Text value="Job History" bold size={14} style={{ marginTop: 24 }} />
+        <Flex row style={{ marginTop: 10, gap: 10, flexWrap: 'wrap' }}>
+          {calculating ? (
+            <Spinner />
+          ) : (
+            <Button
+              icon="calculator"
+              label={preview ? 'Recalculate' : 'Calculate candidates'}
+              onClick={() => handleCalculate(olderThanDays)}
+              disabled={deleting}
+            />
+          )}
+          {preview &&
+            preview.count > 0 &&
+            !calculating &&
+            (deleting ? (
+              <Spinner />
+            ) : (
+              <Button
+                icon="trash"
+                danger
+                label={`Delete ${preview.count} patches (${fmtBytes(preview.totalBytes)})`}
+                onClick={() => setConfirmingCleanup(true)}
+              />
+            ))}
+          {purging ? (
+            <Spinner />
+          ) : (
+            <Button icon="trash" danger label="Purge ALL patches" onClick={() => setConfirmingPurge(true)} />
+          )}
+        </Flex>
+
+        {preview && preview.count > 0 && (
+          <DataTable
+            value={preview.candidates}
+            size="small"
+            paginator
+            rows={10}
+            style={{ width: '100%', marginTop: 12 }}
+            emptyMessage="No candidates">
+            <Column field="platform" header="Platform" />
+            <Column
+              header="From → To"
+              body={(r: ObsoleteCandidate) => (
+                <Text value={`${(r.fromUpdateId || '').slice(0, 8)} → ${(r.toUpdateId || '').slice(0, 8)}`} size={11} />
+              )}
+            />
+            <Column
+              header="Target version"
+              body={(r: ObsoleteCandidate) => <Text value={r.toUpload?.version || '—'} size={11} />}
+            />
+            <Column
+              header="Channel"
+              body={(r: ObsoleteCandidate) => <Text value={r.toUpload?.releaseChannel || '—'} size={11} />}
+            />
+            <Column header="Target created" body={(r: ObsoleteCandidate) => fmtDate(r.toUpload?.createdAt)} />
+            <Column
+              field="status"
+              header="Patch status"
+              body={(r: ObsoleteCandidate) => <Pill value={r.status} color={PATCH_STATUS_COLORS[r.status || '']} />}
+            />
+            <Column field="size" header="Size" body={(r: ObsoleteCandidate) => fmtBytes(r.size)} />
+            <Column field="servedCount" header="Served" body={(r: ObsoleteCandidate) => String(r.servedCount || 0)} />
+            <Column field="createdAt" header="Patch created" body={(r: ObsoleteCandidate) => fmtDate(r.createdAt)} />
+          </DataTable>
+        )}
+
+        {preview && preview.count === 0 && (
+          <Text
+            value={`No obsolete patches older than ${preview.computedForDays} day(s) for this app.`}
+            size={12}
+            color={Colors.text}
+            style={{ marginTop: 12 }}
+          />
+        )}
+
+        {/* Job History — append-only event log from patch-jobs */}
+        <Text value="Job History" bold size={14} style={{ marginTop: 32 }} />
         {!jobsReady && <Spinner />}
         {jobsReady && (
           <DataTable
@@ -166,32 +363,98 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
             paginator
             rows={15}
             style={{ width: '100%', marginTop: 8 }}
-            emptyMessage="No jobs yet">
-            <Column field="startedAt" header="Started" body={(r) => fmtDate(r.startedAt)} />
-            <Column field="type" header="Type" body={(r) => <Pill value={r.type} color={JOB_TYPE_COLORS[r.type]} />} />
+            emptyMessage="No history yet">
+            <Column field="at" header="When" body={(r: PatchJobRecord) => fmtDate(r.at)} />
             <Column
-              field="status"
+              field="event"
+              header="Event"
+              body={(r: PatchJobRecord) => <Pill value={r.event} color={EVENT_COLORS[r.event || '']} />}
+            />
+            <Column
               header="Status"
-              body={(r) => <Pill value={r.status} color={JOB_STATUS_COLORS[r.status]} />}
+              body={(r: PatchJobRecord) => {
+                if (r.event === 'status-changed') {
+                  return (
+                    <Flex row style={{ gap: 4, alignItems: 'center' }}>
+                      <Pill value={r.previousStatus || '—'} color={PATCH_STATUS_COLORS[r.previousStatus || '']} />
+                      <Text value="→" size={11} color={Colors.text} />
+                      <Pill value={r.status || '—'} color={PATCH_STATUS_COLORS[r.status || '']} />
+                    </Flex>
+                  )
+                }
+                if (r.event === 'removed') {
+                  return <Pill value={r.previousStatus || '—'} color={PATCH_STATUS_COLORS[r.previousStatus || '']} />
+                }
+                return <Pill value={r.status || '—'} color={PATCH_STATUS_COLORS[r.status || '']} />
+              }}
             />
             <Column field="platform" header="Platform" />
             <Column
               header="From → To"
-              body={(r) => (
+              body={(r: PatchJobRecord) => (
                 <Text value={`${(r.fromUpdateId || '').slice(0, 8)} → ${(r.toUpdateId || '').slice(0, 8)}`} size={11} />
               )}
             />
-            <Column field="durationMs" header="Duration" body={(r) => fmtMs(r.durationMs)} />
             <Column
-              field="error"
+              field="attempts"
+              header="Attempts"
+              body={(r: PatchJobRecord) => (r.attempts != null ? String(r.attempts) : '—')}
+            />
+            <Column field="durationMs" header="Duration" body={(r: PatchJobRecord) => fmtMs(r.durationMs)} />
+            <Column field="size" header="Size" body={(r: PatchJobRecord) => fmtBytes(r.size)} />
+            <Column
               header="Reason / Error"
-              body={(r) => (
+              body={(r: PatchJobRecord) => (
                 <Text value={r.error || r.reason || ''} size={11} color={r.error ? '#ff6b6b' : Colors.text} />
               )}
             />
           </DataTable>
         )}
       </Flex>
+
+      <ConfirmDialog
+        visible={confirmingCleanup}
+        title="Delete obsolete patches"
+        confirmIcon="trash"
+        confirmLabel={preview?.count ? `Delete ${preview.count} patch(es)` : 'Delete'}
+        confirmDanger
+        onConfirm={handleConfirmCleanup}
+        onCancel={() => setConfirmingCleanup(false)}
+        loading={deleting}>
+        {preview && (
+          <>
+            <Text
+              value={`You are about to delete ${preview.count} patch(es) (${fmtBytes(preview.totalBytes)}) whose target update is obsolete and older than ${preview.computedForDays} day(s).`}
+            />
+            <Text
+              value="Patches from an obsolete bundle to a current release are NOT affected — only those pointing at a retired target."
+              style={{ marginTop: 20 }}
+            />
+            <Text value="This permanently removes patch files and database records." style={{ marginTop: 20 }} />
+            <Text value="Are you sure?" style={{ marginTop: 20 }} />
+          </>
+        )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        visible={confirmingPurge}
+        title="Purge all patches"
+        confirmIcon="trash"
+        confirmLabel={`Purge ${stats.count} patch(es)`}
+        confirmDanger
+        onConfirm={handlePurge}
+        onCancel={() => setConfirmingPurge(false)}
+        loading={purging}>
+        <Text
+          value={`You are about to delete ALL ${stats.count} patch(es) for this app (${fmtBytes(stats.totalSize)}), regardless of status or target.`}
+        />
+        <Text
+          value="Clients will fall back to full bundle downloads until patches are regenerated on demand."
+          style={{ marginTop: 20 }}
+        />
+        <Text value="This permanently removes patch files and database records." style={{ marginTop: 20 }} />
+        <Text value="Are you sure?" style={{ marginTop: 20 }} />
+      </ConfirmDialog>
     </Card>
   )
 }

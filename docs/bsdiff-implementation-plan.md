@@ -35,7 +35,7 @@ Without this flag, clients never send `A-IM: bsdiff` and the server feature stay
 | Worker concurrency | 1 (sequential) | bsdiff is CPU+RAM heavy (~50MB per 10MB bundle) |
 | Worker tick | 5s | Balance latency vs polling overhead |
 | Failure cooldown | 4h (`nextAttemptAt`) | Avoid hammering on persistent failures |
-| Obsolete retention | 7d after upload→obsolete | Free disk space without immediate destruction |
+| Obsolete cleanup | Manual via UI (`patches.cleanupObsolete`) | Mirrors `utils.cleanupOldUpdates` pattern — admin sees candidates + size, confirms, then destructive op runs |
 | Patch-jobs retention | 30d (TTL index) | Audit log without unbounded growth |
 | Disk usage API | `fs.statfs` (Node 18.15+) | Cross-platform, no shell exec |
 | Fallback on failure | 200 + full bundle + log error | Never break update flow |
@@ -69,8 +69,7 @@ Without this flag, clients never send `A-IM: bsdiff` and the server feature stay
   attempts: Number,
   error: String,
   servedCount: Number,         // increment per client download
-  lastServedAt: Date,
-  markedObsoleteAt: Date       // set when upload→obsolete; cleanup after 7d
+  lastServedAt: Date
 }
 ```
 
@@ -78,25 +77,33 @@ Unique index: `{ fromUpdateId: 1, toUpdateId: 1, platform: 1 }`
 
 ### Collection: `patch-jobs`
 
+Append-only event log of state changes on `patches`. One row per event;
+populated automatically by Feathers hooks on the `patches` service (not by
+ad-hoc `log()` calls). Audit coverage is therefore exhaustive — anything
+that mutates a patch row produces exactly one history entry.
+
 ```javascript
 {
   _id: ObjectId,
   patchId: ObjectId,
-  type: 'generate' | 'validate' | 'delete' | 'purge',
-  status: 'queued' | 'running' | 'success' | 'failed',
   project: String,
   platform: String,
   fromUpdateId: String,
   toUpdateId: String,
-  startedAt: Date,
-  completedAt: Date,
+  event: 'created' | 'status-changed' | 'removed',
+  status: String,              // for created / status-changed: the new status
+  previousStatus: String,      // for status-changed / removed
+  attempts: Number,
   durationMs: Number,
+  size: Number,
   error: String,
-  reason: String               // e.g., 'obsolete-7d', 'manual-purge'
+  reason: String,              // for removed: manual-purge | cleanup-obsolete | upload-removed | manual
+  at: Date
 }
 ```
 
-TTL index on `startedAt` with 30d expiration.
+TTL index on `at` (30d). External clients can only `find`/`get`/`remove`
+their own logs; `create`/`patch`/`update` blocked — internal-only.
 
 ### Collection: `apps` (extension)
 
@@ -110,11 +117,11 @@ Add field: `bsdiffEnabled: Boolean` (default `false`).
 | `API/src/modules/expo/patch.js` | **new** | bsdiff generation, application, validation |
 | `API/src/modules/patches/worker.js` | **new** | Background queue worker + cleanup job |
 | `API/src/modules/patches/index.js` | **new** | Worker bootstrap |
-| `API/src/services/patches.js` | **new** | CRUD service + purgeAll custom action |
-| `API/src/services/patch-jobs.js` | **new** | Audit log service (TTL) |
+| `API/src/services/patches.js` | **new** | CRUD service + purgeAll / cleanupObsolete / getObsoleteCandidates custom actions + audit-log hooks |
+| `API/src/services/patch-jobs.js` | **new** | Append-only event log of patches state changes (TTL 30d) |
 | `API/src/services/disk-usage.js` | **new** | `fs.statfs` + recursive dir sizes (10s cache) |
 | `API/src/services/apps.js` | edit | Allow `bsdiffEnabled` field |
-| `API/src/services/uploads.js` | edit | Hooks: before.remove cascade, after.patch obsolete-tracking |
+| `API/src/services/uploads.js` | edit | Hooks: before.remove cascade (delete patches whose from/to upload is gone) |
 | `API/src/services/utils.js` | edit | Add `getUpdateSizes` endpoint (bundle/assets per platform) |
 | `API/src/modules/expo/manifest.js` | edit | Add `&updateId=&platform=&project=` to launch URL |
 | `API/src/modules/expo/asset.js` | edit | Patch-serving branch with `226` + headers + `$inc servedCount` |
@@ -158,7 +165,6 @@ Headers: A-IM: bsdiff, Expo-Current-Update-ID: <current>, Expo-Requested-Update-
 
 ```
 setInterval(tick, 5000)         // 5s queue tick
-setInterval(cleanupTick, 3600000)  // 1h obsolete cleanup
 
 tick():
   1. atomically claim one job: findOneAndUpdate(
@@ -169,13 +175,12 @@ tick():
   3. resolve paths, generatePatch(fromBundle, toBundle) → buffer.
   4. write to patch.path; record size, ratio.
   5. status='validating'; validate(patch) → see "Validation Strategy".
-  6. status='ready', completedAt=now; log success in patch-jobs.
-  7. on any error: status='failed', nextAttemptAt=now+4h, attempts++, error=msg; log failed.
-
-cleanupTick():
-  - find patches where markedObsoleteAt < now-7d
-  - delete patch file + Mongo record + log type='delete' reason='obsolete-7d'
+  6. status='ready', completedAt=now, durationMs=elapsed, error=null.
+  7. on any error: status='failed', nextAttemptAt=now+4h, attempts++, error=msg.
 ```
+
+No automatic obsolete cleanup. Disk reclamation is admin-driven via the
+`Cleanup obsolete patches` button in BsdiffManager (see "Manual cleanup").
 
 ## Validation Strategy
 
@@ -191,9 +196,42 @@ Final sha256 correctness verification is delegated to the client (built into exp
 
 ## Cascade Behavior
 
-- `uploads.before.remove(id)` → find patches where `fromUploadId==id || toUploadId==id` → delete files + Mongo records + log.
-- `uploads.after.patch` with `status: 'obsolete'` → set `markedObsoleteAt=now` on patches where `toUploadId==id || fromUploadId==id`.
-- `uploads.after.patch` from `obsolete` back to other status → unset `markedObsoleteAt` (resurrect).
+- `uploads.before.remove(id)` → find patches where `fromUploadId==id || toUploadId==id` → delete files + Mongo records.
+- No `uploads.after.patch` hook. We do not track status transitions in real
+  time; obsolete patches are surfaced on-demand by joining `patches.toUploadId`
+  against `uploads.status === 'obsolete'` inside the cleanup method.
+
+## Manual Cleanup
+
+`patches.getObsoleteCandidates({ project, olderThanDays })` — read-only
+preview. Joins `patches` against `uploads`, returns
+`{ candidates, totalBytes, count, computedForDays }` for patches whose
+`toUploadId` references an upload in `status: 'obsolete'` AND whose
+`patches.createdAt` is older than `now - olderThanDays`. `olderThanDays=0`
+means no age gate (return all obsolete patches). Each candidate carries
+embedded `toUpload` info (version, releaseChannel, createdAt, gitCommit)
+so the UI table can show what's affected without N+1 lookups.
+
+`patches.cleanupObsolete({ project, olderThanDays })` — destructive.
+Re-runs the candidate query and removes each patch (file + Mongo record)
+via `service.remove(id, { reason: 'cleanup-obsolete' })`, which triggers
+`removePatchFileBeforeDelete` (file) and the `logRemoved` hook
+(`patch-jobs` entry with `reason: 'cleanup-obsolete'`).
+
+**UI flow (BsdiffManager, mirrors ReleaseManager.cleanupOldUpdates):**
+1. Admin sets *Window (days)* input (default 7).
+2. Click *Calculate candidates* → calls `getObsoleteCandidates` → state
+   stores preview. Stats show `count` + `totalBytes`. Preview table lists
+   every affected patch with target update metadata.
+3. Click *Delete N patches (X MB)* → calls `cleanupObsolete` with the same
+   `olderThanDays`. Server re-runs the predicate (never trusts the client's
+   preview blindly) and deletes. UI toasts result and recomputes preview
+   so the table reflects the post-cleanup state.
+
+Predicate rationale (toUpload only, not fromUpload): a patch from an
+obsolete bundle to a currently-released bundle is still valuable — it lets
+clients stuck on the old bundle save bandwidth on their next upgrade. Only
+when the target itself is retired does the patch become dead weight.
 
 ## Metrics & UI
 
@@ -206,11 +244,21 @@ Final sha256 correctness verification is delegated to the client (built into exp
 - **macOS Docker Desktop dev caveat:** bind-mounted paths go through virtio-fs which returns synthetic `bsize=1MB` and bogus `blocks` (~254 TB). Set `DISK_STAT_PATH=/` in dev compose to point `statfs` at the VM overlay root. On Linux production this is unnecessary.
 
 **Update sizes** (`/utils/getUpdateSizes?uploadId=<id>`):
-- `bundleByPlatform: { ios: N, android: M }` — from metadata.json
-- `assetsByPlatform: { ios: N, android: M }` — sum of asset file sizes
-- `patchesTotal: N` — sum of related patches
-- `zipSize: N` — `upload.size`
-- `total: N` — sum of everything
+- `bundleByPlatform: { ios: N, android: M }` — JS bundle bytes per platform (from metadata.json)
+- `assetsBytes: N` — total bytes of unique asset files (each file counted once even when shared across platforms)
+- `assetsCount: N` — total unique asset files
+- `assetsSharedCount: N` — files referenced by both iOS and Android
+- `assetsIosOnlyCount: N`, `assetsAndroidOnlyCount: N` — per-platform exclusives
+- `patchesBytes: N` — sum of patch file sizes related to this update
+- `zipBytes: N` — real on-disk zip size (falls back to `upload.size` from Mongo if file missing)
+- `total: N` — sum of bundle (both platforms) + assets + patches + zip
+
+**Why `assetsBytes` instead of `assetsByPlatform`:** Expo updates routinely
+share asset files between platforms (one PNG used on both iOS and Android).
+Splitting bytes by platform would either double-count shared files
+(misrepresenting on-disk usage) or require an arbitrary 50/50 allocation.
+Single `assetsBytes` is what's actually on disk; per-platform breakdown is
+preserved in the count fields where it has a defensible meaning.
 
 **Top-menu chip**: "Updates: 12.3 GB · Patches: 240 MB · Used: 18.4 / 200 GB · Free: 181.6 GB"
 
@@ -222,8 +270,16 @@ Final sha256 correctness verification is delegated to the client (built into exp
 - Toggle `bsdiffEnabled` (patches `apps`)
 - Total patches size for this app
 - Total served count
-- "Purge all patches" — confirms, POST `/patches/purgeAll` { project }
-- Chronological DataTable of `patch-jobs` (real-time via `messages` websocket)
+- "Cleanup obsolete patches" — two-phase: GET `obsoleteCandidates` to show
+  count + freed bytes in confirm dialog, then `update('cleanupObsolete', { project })`
+- "Purge all patches" — confirms, `update('purgeAll', { project })`
+- *Cleanup obsolete patches* section: Window-days input + Calculate +
+  preview table + Delete (see "Manual Cleanup").
+- Job History DataTable backed by `patch-jobs` event log, sorted by `at`
+  desc. Columns: when, event (created / status-changed / removed pill),
+  status (prev→new for status-changed), platform, From→To, attempts,
+  duration, size, reason/error. Real-time refresh via `messages` websocket
+  invalidation on the `patchJobs` key.
 
 ## Out of Scope
 
@@ -254,7 +310,7 @@ Or, equivalently, via a config plugin in `app.json`. The flag must be present in
 ## Implementation Order
 
 1. Dependency + `patch.js` (generation/application/validation primitives)
-2. Mongo services scaffold (`patches`, `patch-jobs`) + app field
+2. Mongo services scaffold (`patches` + `patch-jobs` audit log) + app field
 3. Worker (queue tick + cleanup tick)
 4. Asset endpoint + manifest URL update + cascade hooks
 5. `disk-usage` + `utils.getUpdateSizes`
