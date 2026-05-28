@@ -96,6 +96,19 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord, settin
     return
   }
 
+  // Heartbeat: while we hold this patch, keep its lastAttemptAt fresh so the
+  // stale-reclaim branch never mistakes a legitimately long-running job (5-10s,
+  // or longer under load) for a crashed one and hands it to a second worker.
+  // The status guard means a no-op once the job leaves 'generating'.
+  const collection = app.service('patches').Model
+  const heartbeatMs = Math.max(10_000, Math.floor(settings.staleInProgressMs / 3))
+  const heartbeat = setInterval(() => {
+    collection
+      ?.updateOne({ _id: patchDoc._id, status: 'generating' }, { $set: { lastAttemptAt: new Date() } })
+      .catch(() => {})
+  }, heartbeatMs)
+  heartbeat.unref?.()
+
   // Integrity + generate + validate all run in a worker thread so the
   // synchronous WASM diff never blocks the main event loop.
   let result
@@ -113,6 +126,8 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord, settin
     })
     await markFailed(app, patchDoc, `worker: ${e instanceof Error ? e.message : String(e)}`, settings.cooldownMs)
     return
+  } finally {
+    clearInterval(heartbeat)
   }
 
   logger.info('patches.worker: generation result', { id: patchDoc._id, outcome: result.outcome })

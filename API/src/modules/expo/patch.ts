@@ -74,7 +74,23 @@ export const generatePatch = async (fromUpload, toUpload, platform) => {
 
   ensurePatchDir(toUpload)
   const outPath = getPatchFilePath(toUpload, fromUpload, platform)
-  fs.writeFileSync(outPath, patchBuf)
+  // Write to a unique temp file, then atomically rename into place. If two
+  // workers ever generate the same patch concurrently (e.g. a slow job exceeds
+  // the stale-reclaim window, or multiple API instances), neither can observe
+  // a half-written file: rename is atomic on the same filesystem, and bsdiff is
+  // deterministic so both produce byte-identical output — last rename wins.
+  const tmpPath = `${outPath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
+  try {
+    fs.writeFileSync(tmpPath, patchBuf)
+    fs.renameSync(tmpPath, outPath)
+  } catch (e) {
+    try {
+      fs.unlinkSync(tmpPath)
+    } catch (cleanupErr) {
+      /* tmp may not exist */
+    }
+    throw e
+  }
 
   return {
     path: outPath,
