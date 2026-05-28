@@ -1,9 +1,8 @@
-import { getBsdiffSettings } from '../../services/bsdiff-settings'
 import type { BsdiffSettings } from '../../services/bsdiff-settings'
+import { getBsdiffSettings } from '../../services/bsdiff-settings'
 import type { AppLike, LoggerLike, PatchRecord, UploadRecord } from '../../types'
-import { isLaunchBundleHealthy } from '../expo/integrity'
-import { deletePatchFile, generatePatch, validatePatch } from '../expo/patch'
 import loggerDefault from '../logger'
+import { runGenerationJob } from './pool'
 
 // Direct import (not via ../index) to avoid circular dep:
 // feathers.config → patches/worker → modules/index → feathers.config.
@@ -28,10 +27,7 @@ interface PatchWorkerRecord extends PatchRecord {
   toUpdateId: string
 }
 
-const claimNextPendingPatch = async (
-  app: AppLike,
-  staleInProgressMs: number,
-): Promise<PatchWorkerRecord | null> => {
+const claimNextPendingPatch = async (app: AppLike, staleInProgressMs: number): Promise<PatchWorkerRecord | null> => {
   const collection = app.service('patches').Model
   if (!collection) return null
   const now = new Date()
@@ -69,8 +65,14 @@ const markFailed = async (app: AppLike, patch: PatchWorkerRecord, errorMessage: 
   })
 }
 
+// JSON-clone an upload record so only plain, structured-cloneable data crosses
+// the worker boundary: strips ObjectId/class prototypes and converts Dates to
+// ISO strings (which getMetadataSync's `new Date(releasedAt)` re-parses fine).
+const toPlainUpload = (upload: UploadRecord): Record<string, unknown> =>
+  JSON.parse(JSON.stringify(upload)) as Record<string, unknown>
+
 const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord, settings: BsdiffSettings) => {
-  const generationStartedAt = new Date()
+  const generationStartedAt = Date.now()
   logger.info('patches.worker: claimed patch', {
     id: patchDoc._id,
     platform: patchDoc.platform,
@@ -85,102 +87,69 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord, settin
       app.service('uploads').get(patchDoc.toUploadId),
     ])) as [UploadRecord, UploadRecord]
   } catch (e) {
-    await markFailed(app, patchDoc, `upload lookup failed: ${e instanceof Error ? e.message : String(e)}`, settings.cooldownMs)
-    return
-  }
-  logger.info('patches.worker: uploads resolved, running integrity + generation', { id: patchDoc._id })
-
-  // Integrity pre-flight — never diff against a broken bundle. The patch
-  // would either fail to generate, produce an invalid output, or
-  // (worst case) silently produce semantically-corrupt bytes.
-  const fromHealth = isLaunchBundleHealthy(fromUpload, patchDoc.platform)
-  if (!fromHealth.healthy) {
-    await markFailed(app, patchDoc, `FROM bundle integrity: ${fromHealth.blocking.map((b) => b.message).join('; ')}`, settings.cooldownMs)
-    return
-  }
-  const toHealth = isLaunchBundleHealthy(toUpload, patchDoc.platform)
-  if (!toHealth.healthy) {
-    await markFailed(app, patchDoc, `TO bundle integrity: ${toHealth.blocking.map((b) => b.message).join('; ')}`, settings.cooldownMs)
+    await markFailed(
+      app,
+      patchDoc,
+      `upload lookup failed: ${e instanceof Error ? e.message : String(e)}`,
+      settings.cooldownMs,
+    )
     return
   }
 
-  // Generation
-  logger.info('patches.worker: starting generatePatch (bsdiff)', { id: patchDoc._id })
-  let genResult
+  // Integrity + generate + validate all run in a worker thread so the
+  // synchronous WASM diff never blocks the main event loop.
+  let result
   try {
-    genResult = await generatePatch(fromUpload, toUpload, patchDoc.platform)
-    logger.info('patches.worker: generatePatch done', {
-      id: patchDoc._id,
-      size: genResult.size,
-      targetSize: genResult.targetSize,
-    })
-  } catch (e) {
-    logger.error('patches.worker: generation failed', {
-      id: patchDoc._id,
-      error: e instanceof Error ? e.message : String(e),
-    })
-    await markFailed(app, patchDoc, `generation: ${e instanceof Error ? e.message : String(e)}`, settings.cooldownMs)
-    return
-  }
-
-  await app.service('patches').patch(patchDoc._id, {
-    status: 'validating',
-    path: genResult.path,
-    size: genResult.size,
-    targetBundleSize: genResult.targetSize,
-    compressionRatio: genResult.size / genResult.targetSize,
-  })
-
-  // Validation (magic-bytes + benefit check; client does sha256 verify)
-  let validation
-  try {
-    validation = await validatePatch({
-      patchPath: genResult.path,
-      expectedTargetSize: genResult.targetSize,
+    result = await runGenerationJob({
+      fromUpload: toPlainUpload(fromUpload),
+      toUpload: toPlainUpload(toUpload),
+      platform: patchDoc.platform,
       benefitRatio: settings.patchBenefitRatio,
     })
   } catch (e) {
-    deletePatchFile(genResult.path)
-    await markFailed(app, patchDoc, `validation crash: ${e instanceof Error ? e.message : String(e)}`, settings.cooldownMs)
+    logger.error('patches.worker: generation worker failed', {
+      id: patchDoc._id,
+      error: e instanceof Error ? e.message : String(e),
+    })
+    await markFailed(app, patchDoc, `worker: ${e instanceof Error ? e.message : String(e)}`, settings.cooldownMs)
     return
   }
 
-  const validationCompletedAt = new Date()
-  logger.info('patches.worker: validation result', {
-    id: patchDoc._id,
-    ok: validation.ok,
-    notBeneficial: !!validation.notBeneficial,
-    reason: validation.reason,
-  })
+  logger.info('patches.worker: generation result', { id: patchDoc._id, outcome: result.outcome })
 
-  if (!validation.ok) {
-    deletePatchFile(genResult.path)
-    if (validation.notBeneficial) {
-      // Permanent terminal state: bundles unchanged → result would be identical.
-      // Worker must never retry; asset endpoint must never serve.
-      await app.service('patches').patch(patchDoc._id, {
-        status: 'not-beneficial',
-        error: validation.reason,
-        nextAttemptAt: null,
-        path: null,
-        completedAt: validationCompletedAt,
-      })
-    } else {
-      await markFailed(app, patchDoc, validation.reason, settings.cooldownMs)
-    }
+  if (result.outcome === 'failed') {
+    await markFailed(app, patchDoc, result.error, settings.cooldownMs)
+    return
+  }
+
+  if (result.outcome === 'not-beneficial') {
+    // Permanent terminal state: bundles unchanged → result would be identical.
+    // Worker must never retry; asset endpoint must never serve. (Patch file
+    // already deleted inside the generation worker.)
+    await app.service('patches').patch(patchDoc._id, {
+      status: 'not-beneficial',
+      error: result.reason,
+      nextAttemptAt: null,
+      path: null,
+      completedAt: new Date(),
+    })
     return
   }
 
   await app.service('patches').patch(patchDoc._id, {
     status: 'ready',
-    completedAt: validationCompletedAt,
-    durationMs: validationCompletedAt.getTime() - generationStartedAt.getTime(),
+    path: result.path,
+    size: result.size,
+    targetBundleSize: result.targetSize,
+    compressionRatio: result.compressionRatio,
+    durationMs: Date.now() - generationStartedAt,
+    completedAt: new Date(),
     error: null,
   })
   logger.info('patches.worker: patch ready', {
     id: patchDoc._id,
-    size: genResult.size,
-    ratio: genResult.size / genResult.targetSize,
+    size: result.size,
+    ratio: result.compressionRatio,
   })
 }
 
