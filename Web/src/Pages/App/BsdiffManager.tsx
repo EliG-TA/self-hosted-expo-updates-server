@@ -114,9 +114,18 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
   const [preview, setPreview] = useState<ObsoletePreview | null>(null)
   const [confirmingCleanup, setConfirmingCleanup] = useState(false)
   const [confirmingPurge, setConfirmingPurge] = useState(false)
+  // The card is collapsed by default and the Card hides (not unmounts) its
+  // children, so gate the fetches on actual visibility: patches only once the
+  // card is opened, jobs only once the Job History tab (index 1) is active.
+  const [cardOpen, setCardOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState(0)
 
-  const { data: patches, isSuccess: patchesReady } = useCQuery<ListResult<PatchRecord>>(['patches', project])
-  const { data: jobs, isSuccess: jobsReady } = useCQuery<ListResult<PatchJobRecord>>(['patchJobs', project])
+  const { data: patches, isSuccess: patchesReady } = useCQuery<ListResult<PatchRecord>>(['patches', project], {
+    enabled: cardOpen,
+  })
+  const { data: jobs, isSuccess: jobsReady } = useCQuery<ListResult<PatchJobRecord>>(['patchJobs', project], {
+    enabled: cardOpen && activeTab === 1,
+  })
 
   const stats = useMemo(() => {
     const list = listFromResult(patches)
@@ -210,8 +219,9 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
       collapsable
       collapsed
       fadeIn
+      onToggle={(collapsed) => setCardOpen(!collapsed)}
       style={{ padding: 20, width: '100%', maxWidth: 900, marginTop: 40 }}>
-      <TabView>
+      <TabView activeIndex={activeTab} onTabChange={(e) => setActiveTab(e.index)}>
         <TabPanel header="Management">
           <Flex fw as style={{ padding: 10 }}>
             <Flex row fw style={{ justifyContent: 'space-between', alignItems: 'center' }}>

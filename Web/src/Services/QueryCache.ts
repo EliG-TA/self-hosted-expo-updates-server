@@ -114,13 +114,19 @@ const queries: Record<string, AppQuery> = {
   },
 }
 
-export const useCQuery = <T = DynamicData>(queryKey: QueryKeyValue): UseQueryResult<T> => {
+export const useCQuery = <T = DynamicData>(
+  queryKey: QueryKeyValue,
+  // `enabled` lets callers defer a fetch until the data is actually visible
+  // (e.g. a collapsed card / unopened tab). Combined with the client-ready
+  // gate so we never fetch before auth is established.
+  options?: { enabled?: boolean },
+): UseQueryResult<T> => {
   const { queryFn, config } = queries[Array.isArray(queryKey) ? queryKey[0] : queryKey] || queryNotFound
   return useQuery({
     queryKey: asQueryKey(queryKey),
     queryFn: () => runQuery(queryKey, queryFn) as T,
     ...config,
-    enabled: FC.isReady(),
+    enabled: FC.isReady() && (options?.enabled ?? true),
   })
 }
 

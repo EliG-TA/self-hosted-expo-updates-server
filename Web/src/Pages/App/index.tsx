@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { Flex, Spinner } from '../../Components'
@@ -8,9 +8,12 @@ import { BsdiffManager } from './BsdiffManager'
 import { ConfigApp } from './ConfigApp'
 import { ConfigServer } from './ConfigServer'
 import { PublishedUpdates } from './PublishedUpdates'
-import { Release } from './Release'
 import { ReleaseManager } from './ReleaseManager'
 import { OpenUpdateContext } from './updateDetails'
+
+// The update-details dialog (UpdateInfo + integrity + patch tabs) is heavy and
+// only needed once an update is opened — load its chunk on first open.
+const Release = lazy(() => import('./Release').then((m) => ({ default: m.Release })))
 
 export default function App() {
   const { appId = '' } = useParams()
@@ -45,7 +48,11 @@ export default function App() {
         <ConfigServer state={[appUpdate, setAppUpdate]} />
         <ConfigApp app={appUpdate} />
       </Flex>
-      <Release update={openedUpdate} onHide={() => setOpenedUpdate(null)} />
+      {openedUpdate && (
+        <Suspense fallback={<Spinner />}>
+          <Release update={openedUpdate} onHide={() => setOpenedUpdate(null)} />
+        </Suspense>
+      )}
     </OpenUpdateContext.Provider>
   )
 }
