@@ -1,3 +1,4 @@
+import * as Err from '@feathersjs/errors'
 import type { MongoDBAdapterOptions } from '@feathersjs/mongodb'
 import { MongoDBService } from '@feathersjs/mongodb'
 import type { Db } from 'mongodb'
@@ -5,8 +6,37 @@ import type { Db } from 'mongodb'
 import error from '../hooks/error'
 import s from '../hooks/security'
 import { logger } from '../modules'
-import { deletePatchFile } from '../modules/expo/patch'
+import { deletePatchFile, getAvailablePlatforms } from '../modules/expo/patch'
 import type { AppLike, HookContextLike, PatchRecord, UploadRecord } from '../types'
+
+// Decide what to do with a manual enqueue request for ONE platform, given any
+// existing patch row for that (fromUpdateId, toUpdateId, platform) triple.
+//
+//   'create' — no usable row exists; insert a fresh pending patch
+//   'reset'  — a row exists in a terminal/failed state; flip back to pending
+//              so the worker retries it now (clears cooldown)
+//   'skip'   — a usable row already exists; do nothing (report why)
+//
+// This is the core policy of the manual trigger. Consider each case:
+//   - existing === undefined        → nothing there yet
+//   - status 'ready'                → a patch file already exists on disk
+//   - 'pending'/'generating'/'validating' → worker is already on it
+//   - 'failed'                      → a previous attempt errored (cooldown may
+//                                     still be ticking; manual = retry now)
+//   - 'not-beneficial'             → terminal: bundles produced no useful diff.
+//                                     Re-running gives the same result UNLESS
+//                                     you intend manual to force a re-check.
+const decideManualEnqueue = (existing?: PatchRecord): 'create' | 'reset' | 'skip' => {
+  if (!existing) return 'create'
+  // Only 'failed' is retried — the manual trigger's main value is bypassing
+  // the worker's 4h cooldown to rebuild a previously-errored patch now.
+  if (existing.status === 'failed') return 'reset'
+  // Everything else is left alone: 'ready' already exists on disk; the
+  // in-progress states ('pending'/'generating'/'validating') mean the worker
+  // is on it; 'not-beneficial' is terminal — the same bundles would diff to
+  // the same useless result, so retrying is wasted work.
+  return 'skip'
+}
 
 class PatchesService extends MongoDBService {
   app: AppLike
@@ -114,6 +144,126 @@ class PatchesService extends MongoDBService {
     }
     this.app.service('messages').create({ action: 'update', keys: ['patches', 'patchJobs', 'diskUsage'] })
     return { removed, totalBytes, count: candidates.length, computedForDays, errors }
+  }
+
+  // Candidate "from" (base) updates for manually building a patch toward
+  // `toUploadId`. Per spec: same project, same runtimeVersion, same release
+  // channel — and not the target itself. Only updates with an updateId can be
+  // a patch base (the updateId is the client-facing key the patch maps from).
+  async getPatchSources({ project, toUploadId }: { project?: string; toUploadId?: string }) {
+    if (!toUploadId) throw new Err.BadRequest('Missing toUploadId')
+    const to = (await this.app.service('uploads').get(toUploadId)) as UploadRecord
+    if (!to) throw new Err.NotFound('Target update not found')
+
+    const found = await this.app.service('uploads').find({
+      query: {
+        project: to.project,
+        version: to.version,
+        releaseChannel: to.releaseChannel,
+        $limit: 1000,
+      },
+    })
+    const list = Array.isArray(found) ? (found as UploadRecord[]) : (found as { data?: UploadRecord[] })?.data || []
+
+    const toPlatforms = getAvailablePlatforms(to)
+    const sources = list
+      .filter((u) => String(u._id) !== String(toUploadId) && u.updateId)
+      .map((u) => {
+        const platforms = getAvailablePlatforms(u).filter((p) => toPlatforms.includes(p))
+        return {
+          _id: u._id,
+          updateId: u.updateId,
+          status: u.status,
+          createdAt: u.createdAt,
+          releasedAt: u.releasedAt,
+          gitCommit: u.gitCommit,
+          gitBranch: u.gitBranch,
+          platforms, // platforms patchable toward the target (intersection)
+        }
+      })
+      // A source with no common platform can't yield a patch — drop it.
+      .filter((s2) => s2.platforms.length > 0)
+
+    return {
+      target: {
+        _id: to._id,
+        updateId: to.updateId,
+        version: to.version,
+        releaseChannel: to.releaseChannel,
+        platforms: toPlatforms,
+      },
+      sources,
+    }
+  }
+
+  // Manually enqueue patch generation from one update to another. Validates
+  // the from/to pair shares project + runtimeVersion + releaseChannel, then
+  // queues a pending patch per common platform. The worker does the rest.
+  async enqueuePatch({ fromUploadId, toUploadId }: { project?: string; fromUploadId?: string; toUploadId?: string }) {
+    if (!fromUploadId || !toUploadId) throw new Err.BadRequest('Missing fromUploadId or toUploadId')
+    if (String(fromUploadId) === String(toUploadId)) throw new Err.BadRequest('from and to must be different updates')
+
+    const [from, to] = (await Promise.all([
+      this.app.service('uploads').get(fromUploadId),
+      this.app.service('uploads').get(toUploadId),
+    ])) as [UploadRecord, UploadRecord]
+    if (!from || !to) throw new Err.NotFound('Update not found')
+    if (from.project !== to.project) throw new Err.BadRequest('Updates belong to different projects')
+    if (from.version !== to.version) throw new Err.BadRequest('Updates have different runtime versions')
+    if (from.releaseChannel !== to.releaseChannel) throw new Err.BadRequest('Updates are on different release channels')
+    if (!from.updateId || !to.updateId) throw new Err.BadRequest('Both updates must have an updateId')
+
+    const platforms = getAvailablePlatforms(from).filter((p) => getAvailablePlatforms(to).includes(p))
+    if (!platforms.length) throw new Err.BadRequest('No common platform bundles between the two updates')
+
+    const now = new Date()
+    const enqueued: Array<{ platform: string; action: 'create' | 'reset' }> = []
+    const skipped: Array<{ platform: string; reason: string }> = []
+
+    for (const platform of platforms) {
+      const existingRes = await this.find({
+        query: { fromUpdateId: from.updateId, toUpdateId: to.updateId, platform, $limit: 1 },
+      })
+      const existing =
+        (Array.isArray(existingRes)
+          ? (existingRes as PatchRecord[])
+          : (existingRes as { data?: PatchRecord[] })?.data)?.[0] || undefined
+
+      const action = decideManualEnqueue(existing)
+
+      if (action === 'skip') {
+        skipped.push({ platform, reason: String(existing?.status || 'unknown') })
+        continue
+      }
+
+      if (action === 'reset' && existing) {
+        await this.patch(existing._id, { status: 'pending', nextAttemptAt: now, error: null, path: null })
+        enqueued.push({ platform, action: 'reset' })
+        continue
+      }
+
+      // create
+      await this.create({
+        project: from.project,
+        platform,
+        version: to.version,
+        releaseChannel: to.releaseChannel,
+        fromUpdateId: from.updateId,
+        toUpdateId: to.updateId,
+        fromUploadId: from._id,
+        toUploadId: to._id,
+        status: 'pending',
+        attempts: 0,
+        servedCount: 0,
+        createdAt: now,
+        nextAttemptAt: now,
+        source: 'manual',
+      })
+      enqueued.push({ platform, action: 'create' })
+    }
+
+    this.app.service('messages').create({ action: 'update', keys: ['patches', 'patchJobs', 'diskUsage'] })
+    return { enqueued, skipped, platforms }
   }
 
   async purgeAll({ project }: { project?: string }) {
@@ -252,6 +402,8 @@ const customUpdateActions = async (context: HookContextLike) => {
     context.result = await context.service.purgeAll?.(context.data || {})
   } else if (context.id === 'cleanupObsolete') {
     context.result = await context.service.cleanupObsolete?.(context.data || {})
+  } else if (context.id === 'enqueue') {
+    context.result = await context.service.enqueuePatch?.(context.data || {})
   }
   return context
 }
@@ -259,6 +411,8 @@ const customUpdateActions = async (context: HookContextLike) => {
 const customGetActions = async (context: HookContextLike) => {
   if (context.id === 'obsoleteCandidates') {
     context.result = await context.service.getObsoleteCandidates?.(context.params?.query || {})
+  } else if (context.id === 'patchSources') {
+    context.result = await context.service.getPatchSources?.(context.params?.query || {})
   }
   return context
 }

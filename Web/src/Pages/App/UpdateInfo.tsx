@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import moment from 'moment'
 import { Column } from 'primereact/column'
@@ -166,6 +167,83 @@ const SizesSection = ({ uploadId }: { uploadId: string }) => {
   )
 }
 
+type PatchSource = {
+  _id: string
+  updateId?: string
+  status?: string
+  createdAt?: string | Date
+  gitCommit?: string
+  platforms: string[]
+}
+type PatchSourcesResult = { target?: { platforms?: string[] }; sources: PatchSource[] }
+
+// Manually queue patch generation FROM a chosen base update TO the update
+// being viewed. Candidates are restricted server-side to the same project,
+// runtime version, and release channel.
+const CreatePatchControl = ({ uploadId, project }: { uploadId: string; project?: string }) => {
+  const { data, isSuccess } = useCQuery<PatchSourcesResult>(['patchSources', project, uploadId])
+  const [fromId, setFromId] = useState('')
+  const [creating, setCreating] = useState(false)
+
+  const sources = data?.sources || []
+
+  const handleCreate = async () => {
+    if (!fromId) return
+    setCreating(true)
+    try {
+      const res = (await FC.client
+        .service('patches')
+        .update('enqueue', { project, fromUploadId: fromId, toUploadId: uploadId })) as {
+        enqueued?: Array<{ platform: string; action: string }>
+        skipped?: Array<{ platform: string; reason: string }>
+      }
+      invalidateQuery(['patches', 'patchJobs', 'diskUsage'])
+      const enq = res?.enqueued || []
+      const skp = res?.skipped || []
+      const enqMsg = enq.length ? `Queued: ${enq.map((e) => `${e.platform} (${e.action})`).join(', ')}` : ''
+      const skpMsg = skp.length ? `Skipped: ${skp.map((s2) => `${s2.platform} (${s2.reason})`).join(', ')}` : ''
+      window.toast?.show({
+        severity: enq.length ? 'success' : 'info',
+        summary: enq.length ? 'Patch generation queued' : 'Nothing queued',
+        detail: [enqMsg, skpMsg].filter(Boolean).join(' · ') || 'No common platforms',
+      })
+      setFromId('')
+    } catch (e) {
+      window.toast?.show({ severity: 'error', summary: 'Enqueue failed', detail: e.message })
+    }
+    setCreating(false)
+  }
+
+  if (!isSuccess) return <Spinner />
+
+  return (
+    <Flex row style={{ gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+      <Text value="Create patch from:" size={12} bold />
+      <select
+        value={fromId}
+        disabled={creating || !sources.length}
+        onChange={(e) => setFromId(e.target.value)}
+        style={{
+          minWidth: 280,
+          padding: '6px 10px',
+          borderRadius: 4,
+          border: '1px solid rgba(255,255,255,0.2)',
+          background: 'rgba(20,26,37,1)',
+          color: Colors.text,
+          fontSize: 13,
+        }}>
+        <option value="">{sources.length ? 'Select a base update…' : 'No eligible base updates'}</option>
+        {sources.map((s2) => (
+          <option key={s2._id} value={s2._id}>
+            {`${(s2.updateId || '').slice(0, 8)} · ${s2.status || '—'} · ${s2.platforms.join('+')}${s2.gitCommit ? ` · ${s2.gitCommit.slice(0, 7)}` : ''}`}
+          </option>
+        ))}
+      </select>
+      {creating ? <Spinner /> : <Button icon="plus" label="Generate patch" disabled={!fromId} onClick={handleCreate} />}
+    </Flex>
+  )
+}
+
 const PatchesTab = ({ uploadId, project }: { uploadId: string; project?: string }) => {
   const { data: patches, isSuccess } = useCQuery<ListResult<PatchRecord>>(['patches', project])
   if (!isSuccess) return <Spinner />
@@ -183,6 +261,7 @@ const PatchesTab = ({ uploadId, project }: { uploadId: string; project?: string 
 
   return (
     <div style={{ width: '100%', display: 'block', boxSizing: 'border-box' }}>
+      <CreatePatchControl uploadId={uploadId} project={project} />
       {!related.length && <Text value="No patches generated yet." size={12} color="rgba(255,255,255,0.5)" />}
       {related.length > 0 && (
         <DataTable value={related} size="small" style={{ width: '100%' }}>

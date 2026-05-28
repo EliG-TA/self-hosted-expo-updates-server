@@ -233,6 +233,31 @@ obsolete bundle to a currently-released bundle is still valuable — it lets
 clients stuck on the old bundle save bandwidth on their next upgrade. Only
 when the target itself is retired does the patch become dead weight.
 
+## Manual Patch Generation
+
+Admins can pre-generate a patch from one update to another instead of waiting
+for a client to request it lazily. Exposed in the per-update Patches tab
+(`UpdateInfo.tsx`), where the viewed update is the **target** (to) and the
+admin picks a **base** (from).
+
+`patches.getPatchSources({ project, toUploadId })` — read-only. Returns
+eligible base updates: **same project + runtime version + release channel**,
+not the target itself, with an `updateId`. Each source reports the platform
+intersection with the target (a source with no common platform bundle is
+dropped — no patch could be built).
+
+`patches.enqueuePatch({ fromUploadId, toUploadId })` — validates the pair
+shares project / version / channel and both have an `updateId`, computes the
+common platform set, then per platform inserts a `pending` patch (or resets a
+`failed` one). The worker picks it up like any other queued patch.
+
+- **Not gated on `bsdiffEnabled`** — admins may pre-warm patches before
+  flipping the toggle. The patch still won't be served until the toggle is on.
+- Per-platform dedup policy (`decideManualEnqueue`): no row → `create`;
+  `failed` → `reset` (bypasses the 4h cooldown — the main reason to trigger
+  manually); `ready` / in-progress / `not-beneficial` → `skip`.
+- Patches created this way carry `source: 'manual'` for provenance.
+
 ## Metrics & UI
 
 **Disk usage** (`/disk-usage`):

@@ -106,6 +106,12 @@ const queries: Record<string, AppQuery> = {
       }),
     noInitalPrefetch: true,
   },
+  patchSources: {
+    config: queryConfig.frequent,
+    queryFn: (key, project, toUploadId) =>
+      toUploadId ? FC.service('patches').get('patchSources', { query: { project, toUploadId } }) : null,
+    noInitalPrefetch: true,
+  },
 }
 
 export const useCQuery = <T = DynamicData>(queryKey: QueryKeyValue): UseQueryResult<T> => {

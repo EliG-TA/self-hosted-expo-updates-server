@@ -28,6 +28,19 @@ export const getLaunchAssetPath = (upload, platform) => {
   return path.join(upload.path, platformMeta.bundle)
 }
 
+// Which platforms this upload ships a launch bundle for. Used by the manual
+// patch-enqueue flow to compute the from↔to platform intersection (a patch
+// is only meaningful when both updates have a bundle for that platform).
+export const getAvailablePlatforms = (upload): string[] => {
+  try {
+    const { metadataJson } = getMetadataSync(upload)
+    const fm = metadataJson?.fileMetadata || {}
+    return ['ios', 'android'].filter((p) => fm[p]?.bundle)
+  } catch (e) {
+    return []
+  }
+}
+
 export const getPatchDir = (toUpload) => path.join(toUpload.path, PATCH_DIR_NAME)
 
 export const getPatchFilePath = (toUpload, fromUpload, platform) =>
