@@ -55,7 +55,6 @@ const VersionTable = ({ project, version, updates, defaultCollapsed, onOpen }) =
           field="updateId"
           header="Update ID"
           sortable
-          filter
           body={(row) => (
             <span
               onClick={(e) => {
@@ -75,12 +74,11 @@ const VersionTable = ({ project, version, updates, defaultCollapsed, onOpen }) =
             </span>
           )}
         />
-        <Column field="releaseChannel" header="Channel" sortable filter style={{ width: 130 }} />
+        <Column field="releaseChannel" header="Channel" sortable style={{ width: 130 }} />
         <Column
           field="gitCommit"
           header="Commit"
           sortable
-          filter
           body={(row) => {
             const { hash, subject } = splitCommit(row.gitCommit)
             return (

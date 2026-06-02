@@ -30,9 +30,14 @@ const asArray = (v: unknown) =>
   Array.isArray(v) ? v.filter((x) => x != null && x !== '') : v != null && v !== '' ? [v] : []
 
 // Sort keys exposed to the table → aggregation field (whitelist).
+// Per-pair aggregates (`totalSize`, `avgRatio`, `totalServed`,
+// `latestCreatedAt`) come from $addFields below — sorting by them is
+// equivalent to sorting pairs by their summary row.
 const SORT_FIELDS: Record<string, string> = {
   latest: 'latestCreatedAt',
+  latestCreatedAt: 'latestCreatedAt',
   totalSize: 'totalSize',
+  avgRatio: 'avgRatio',
   totalServed: 'totalServed',
   createdAt: 'createdAt',
   fromUpdateId: 'fromUpdateId',
@@ -149,6 +154,10 @@ class PatchPairsService extends MongoDBService {
           totalSize: { $sum: '$platforms.size' },
           totalServed: { $sum: '$platforms.servedCount' },
           latestCreatedAt: { $max: '$platforms.createdAt' },
+          // Average compression ratio across the pair's platforms. Skips
+          // null/undefined entries because $avg returns null when ALL inputs
+          // are null — that null is then sortable (nulls land at one end).
+          avgRatio: { $avg: '$platforms.compressionRatio' },
         },
       },
       ...(Object.keys(postMatch).length ? [{ $match: postMatch }] : []),

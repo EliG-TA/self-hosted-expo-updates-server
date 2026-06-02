@@ -5,6 +5,25 @@ import { Column } from 'primereact/column'
 import { DataTable, type DataTableFilterMeta } from 'primereact/datatable'
 import { TabPanel, TabView } from 'primereact/tabview'
 
+import {
+  Button,
+  Card,
+  Colors,
+  ConfirmDialog,
+  DateRangeFilter,
+  Flex,
+  InlineMultiToggle,
+  Spinner,
+  StatusPill,
+  Text,
+} from '../../Components'
+import { FC, invalidateQuery, useCQuery } from '../../Services'
+import type { AppRecord, IntegrityIssue, ListResult, ServiceOutcome, UnknownRecord, UploadRecord } from '../../types'
+import { listFromResult } from '../../types'
+import { PatchesPanel } from './PatchesPanel'
+import { Release } from './Release'
+import { UpdateInstructions } from './UpdateInstructions'
+
 // Register an inclusive-day date-range matcher once at module load.
 // `value` is the row's cell (ISO string from `createdAt`); `filter` is the
 // PrimeReact filter value, which our DateRangeFilter feeds as [Date, Date].
@@ -28,25 +47,6 @@ FilterService.register('dateRange', (value: unknown, filter: unknown) => {
   }
   return true
 })
-
-import {
-  Button,
-  Card,
-  Colors,
-  ConfirmDialog,
-  DateRangeFilter,
-  Flex,
-  InlineMultiToggle,
-  Spinner,
-  StatusPill,
-  Text,
-} from '../../Components'
-import { FC, invalidateQuery, useCQuery } from '../../Services'
-import type { AppRecord, IntegrityIssue, ListResult, ServiceOutcome, UnknownRecord, UploadRecord } from '../../types'
-import { listFromResult } from '../../types'
-import { PatchesPanel } from './PatchesPanel'
-import { Release } from './Release'
-import { UpdateInstructions } from './UpdateInstructions'
 
 const fmtBytes = (n?: number) => {
   if (!n) return '0 B'
@@ -1013,9 +1013,12 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
             style={{ marginTop: 10, width: '100%' }}
             value={uploads}
             paginator
-            rows={10}
+            rows={25}
+            filterDisplay="menu"
             filters={uploadFilters}
             onFilter={(e) => setUploadFilters(e.filters)}
+            paginatorTemplate="FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
+            currentPageReportTemplate="{first}–{last} of {totalRecords}"
             emptyMessage={hasActiveFilter ? 'No updates match the current filters' : 'No app versions yet'}>
             <Column
               field="updateId"
@@ -1055,7 +1058,11 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
                   maxDate={createdMax}
                 />
               )}
-              body={({ createdAt }) => moment(createdAt).format('YYYY-MM-DD HH:mm:ss')}
+              body={({ createdAt }) => (
+                <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+                  {moment(createdAt).format('YYYY-MM-DD HH:mm:ss')}
+                </span>
+              )}
             />
             <Column
               field="releaseChannel"

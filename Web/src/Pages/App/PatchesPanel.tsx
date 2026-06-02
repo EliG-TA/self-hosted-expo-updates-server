@@ -5,9 +5,10 @@ import { DataTable } from 'primereact/datatable'
 import { Dialog } from 'primereact/dialog'
 import { InputText } from 'primereact/inputtext'
 
-import { Button, Colors, ConfirmDialog, DateRangeFilter, Flex, InlineMultiToggle, Text } from '../../Components'
+import { Button, Colors, ConfirmDialog, DateRangeFilter, Flex, InlineMultiToggle, StatusPill, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery, useLazyTable } from '../../Services'
-import type { AppRecord, PatchJobRecord } from '../../types'
+import type { AppRecord, ListResult, PatchJobRecord, UploadRecord } from '../../types'
+import { listFromResult } from '../../types'
 import { UpdateLink } from './updateDetails'
 
 const fmtBytes = (n?: number) => {
@@ -92,87 +93,236 @@ const DetailRow = ({ label, value }: { label: string; value: string }) => (
 // are read off the embedded pair row when present (pairs table), else fetched by
 // pairId (e.g. opened from Update details). updateId links navigate to the
 // update; the table header that opens this card does not.
+const ALL_PLATFORMS: Array<'ios' | 'android'> = ['ios', 'android']
+
+// gitCommit on UploadRecord is the full `git log --oneline -n 1` output —
+// short sha + subject. Split so the hash gets monospace styling and the
+// subject reads as prose. Matches the rendering in PublishedUpdates.
+const splitCommit = (raw?: string) => {
+  if (!raw) return { hash: null as string | null, subject: null as string | null }
+  const idx = raw.indexOf(' ')
+  if (idx === -1) return { hash: raw, subject: null }
+  return { hash: raw.slice(0, idx), subject: raw.slice(idx + 1) }
+}
+
+const UpdateSideCard = ({ label, upload, updateId }: { label: string; upload?: UploadRecord; updateId?: string }) => {
+  const commit = splitCommit(upload?.gitCommit)
+  return (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 240,
+        padding: 12,
+        borderRadius: 6,
+        border: '1px solid rgba(255,255,255,0.12)',
+        background: 'rgba(255,255,255,0.03)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}>
+      <Flex row style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <Text value={label} size={11} color="rgba(255,255,255,0.5)" bold />
+        {upload?.status && <StatusPill status={upload.status} />}
+      </Flex>
+      <UpdateLink updateId={updateId} />
+      {upload?.createdAt && (
+        <DetailRow label="Created" value={fmtDate(upload.createdAt as string)} />
+      )}
+      {upload?.releasedAt && (
+        <DetailRow label="Released" value={fmtDate(upload.releasedAt as string)} />
+      )}
+      {upload?.size != null && <DetailRow label="Bundle" value={fmtBytes(upload.size)} />}
+      {commit.hash && (
+        <Flex as style={{ marginTop: 4, gap: 2 }}>
+          <Text value="Commit" size={11} color="rgba(255,255,255,0.5)" />
+          <span
+            style={{
+              fontFamily: 'ui-monospace, Menlo, monospace',
+              fontSize: 12,
+              color: 'rgba(255,255,255,0.8)',
+            }}>
+            {commit.hash}
+          </span>
+          {commit.subject && (
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }} title={commit.subject}>
+              {commit.subject}
+            </span>
+          )}
+          {upload?.gitBranch && (
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{upload.gitBranch}</span>
+          )}
+        </Flex>
+      )}
+    </div>
+  )
+}
+
 export const PatchPairDetail = ({ pair, onClose }: { pair: Record<string, unknown>; onClose: () => void }) => {
   const fromUpdateId = pair.fromUpdateId as string | undefined
   const toUpdateId = pair.toUpdateId as string | undefined
+  const fromUploadId = pair.fromUploadId as string | undefined
+  const toUploadId = pair.toUploadId as string | undefined
+  const project = pair.project as string | undefined
+  const version = pair.version as string | undefined
+  const releaseChannel = pair.releaseChannel as string | undefined
   const embedded = pair.platforms as Array<Record<string, unknown>> | undefined
+  // Reuse the project-wide uploads query — already cached by Patches tab,
+  // AppDisplay, and ReleaseManager, so this is a free lookup in practice.
+  const { data: uploadsResult } = useCQuery<ListResult<UploadRecord>>(['uploads', project], { enabled: !!project })
+  const uploadsList = listFromResult(uploadsResult)
+  const byId = new Map(uploadsList.map((u) => [String(u._id), u]))
+  const fromUpload = fromUploadId ? byId.get(String(fromUploadId)) : undefined
+  const toUpload = toUploadId ? byId.get(String(toUploadId)) : undefined
+  // Always run the per-pair query — `embedded` is a snapshot from the row
+  // we opened the dialog with and won't refresh after an enqueue/delete.
+  // The live query becomes the source of truth as soon as it resolves,
+  // with the embedded array used only for the first paint.
   const { data: patchesData } = useCQuery<{ data: Array<Record<string, unknown>>; total: number }>(
     ['patchesPage', { pairId: pair._id, limit: 10 }],
-    { enabled: !embedded && !!pair._id },
+    { enabled: !!pair._id },
   )
-  const platforms = embedded || patchesData?.data || []
+  const platforms = patchesData?.data || embedded || []
+  // Index platforms by name so we can render BOTH ios+android slots and
+  // surface a "Queue creation" CTA when the pair is missing one.
+  const platformByName = new Map<string, Record<string, unknown>>()
+  for (const p of platforms) platformByName.set(String(p.platform), p)
   const { data: historyData } = useCQuery<{ data: PatchJobRecord[]; total: number }>(
-    ['patchJobsPage', { pairId: pair._id, limit: 500, sortField: 'at', sortOrder: 1 }],
+    ['patchJobsPage', { pairId: pair._id, limit: 500, sortField: 'at', sortOrder: -1 }],
     { enabled: !!pair._id },
   )
   const history = historyData?.data || []
   const [pendingDelete, setPendingDelete] = useState<Record<string, unknown> | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [enqueuing, setEnqueuing] = useState<string | null>(null) // platform name in flight
 
   const confirmDelete = async () => {
     if (!pendingDelete?._id) return
     setDeleting(true)
     try {
       await FC.client.service('patches').remove(pendingDelete._id)
+      // patchesPage (the dialog's live source) and patchPairsPage (the
+      // background table) both refetch — the deleted platform block flips
+      // back to its "Queue creation" CTA in place.
       invalidateQuery(['patches', 'patchesPage', 'patchPairsPage', 'patchJobsPage', 'diskUsage'])
       setPendingDelete(null)
-      onClose() // reopen to see fresh state; the table list refreshes via invalidate
     } catch (e) {
       window.toast?.show({ severity: 'error', summary: 'Delete failed', detail: (e as Error).message })
-      setDeleting(false)
     }
+    setDeleting(false)
+  }
+
+  const enqueueMissing = async (platform: string) => {
+    if (!fromUploadId || !toUploadId) {
+      window.toast?.show({
+        severity: 'error',
+        summary: 'Cannot enqueue',
+        detail: 'Pair is missing upload references — open it from the Patches tab.',
+      })
+      return
+    }
+    setEnqueuing(platform)
+    try {
+      // Server enqueues for every common platform that's missing/failed and
+      // skips already-good ones, so passing just upload ids is enough.
+      await FC.client.service('patches').update('enqueue', { fromUploadId, toUploadId })
+      invalidateQuery(['patches', 'patchesPage', 'patchPairsPage', 'patchJobsPage', 'diskUsage'])
+      window.toast?.show({ severity: 'info', summary: 'Queued', detail: `Patch generation queued for ${platform}` })
+    } catch (e) {
+      window.toast?.show({ severity: 'error', summary: 'Enqueue failed', detail: (e as Error).message })
+    }
+    setEnqueuing(null)
   }
 
   return (
     <Dialog visible header="Patch detail" style={{ width: 'min(860px, 94vw)' }} onHide={onClose} dismissableMask>
       <Flex as fw style={{ gap: 16, alignItems: 'stretch' }}>
-        <div style={stackCell}>
-          <UpdateLink updateId={fromUpdateId} />
-          <span style={{ color: Colors.text }}>→</span>
-          <UpdateLink updateId={toUpdateId} />
-        </div>
+        <Flex row style={{ gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          {version && (
+            <Flex as>
+              <Text value="Runtime" size={11} color="rgba(255,255,255,0.5)" />
+              <Text value={version} size={13} bold />
+            </Flex>
+          )}
+          {releaseChannel && (
+            <Flex as>
+              <Text value="Channel" size={11} color="rgba(255,255,255,0.5)" />
+              <Text value={releaseChannel} size={13} bold />
+            </Flex>
+          )}
+        </Flex>
+
+        <Flex row style={{ gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
+          <UpdateSideCard label="FROM" upload={fromUpload} updateId={fromUpdateId} />
+          <Flex row style={{ alignItems: 'center', padding: '0 4px' }}>
+            <span style={{ color: Colors.text, fontSize: 20 }}>→</span>
+          </Flex>
+          <UpdateSideCard label="TO" upload={toUpload} updateId={toUpdateId} />
+        </Flex>
 
         <Flex row style={{ gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          {platforms.length === 0 && <Text value="No patch rows for this pair." size={12} color={Colors.text} />}
-          {platforms.map((p) => (
-            <div
-              key={String(p._id)}
-              style={{
-                padding: 14,
-                minWidth: 250,
-                flex: 1,
-                borderRadius: 6,
-                border: '1px solid rgba(255,255,255,0.12)',
-                background: 'rgba(255,255,255,0.03)',
-              }}>
-              <Flex row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <Text value={String(p.platform || '—')} bold size={14} />
-                <Flex row style={{ alignItems: 'center', gap: 8 }}>
-                  <Pill value={(p.status as string) || '—'} color={PATCH_STATUS_COLORS[(p.status as string) || '']} />
-                  <Button icon="trash" danger onClick={() => setPendingDelete(p)} style={{ padding: 4 }} />
+          {ALL_PLATFORMS.map((platform) => {
+            const p = platformByName.get(platform)
+            const blockStyle = {
+              padding: 14,
+              minWidth: 250,
+              flex: 1,
+              borderRadius: 6,
+              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'rgba(255,255,255,0.03)',
+            }
+            if (!p) {
+              return (
+                <div key={platform} style={blockStyle}>
+                  <Flex row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text value={platform} bold size={14} />
+                    <Text value="not generated" size={11} color="rgba(255,255,255,0.5)" />
+                  </Flex>
+                  <Text
+                    value="No patch exists for this platform yet."
+                    size={12}
+                    color="rgba(255,255,255,0.6)"
+                    style={{ marginBottom: 12 }}
+                  />
+                  <Button
+                    icon={enqueuing === platform ? 'spinner' : 'plus'}
+                    label="Queue creation"
+                    disabled={enqueuing === platform || !fromUploadId || !toUploadId}
+                    onClick={() => enqueueMissing(platform)}
+                  />
+                </div>
+              )
+            }
+            return (
+              <div key={String(p._id)} style={blockStyle}>
+                <Flex row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text value={String(p.platform || '—')} bold size={14} />
+                  <Flex row style={{ alignItems: 'center', gap: 8 }}>
+                    <Pill value={(p.status as string) || '—'} color={PATCH_STATUS_COLORS[(p.status as string) || '']} />
+                    <Button icon="trash" danger onClick={() => setPendingDelete(p)} style={{ padding: 4 }} />
+                  </Flex>
                 </Flex>
-              </Flex>
-              <DetailRow label="Patch size" value={fmtBytes(p.size as number)} />
-              <DetailRow label="Target bundle" value={fmtBytes(p.targetBundleSize as number)} />
-              <DetailRow
-                label="Ratio"
-                value={p.compressionRatio ? `${((p.compressionRatio as number) * 100).toFixed(1)}%` : '—'}
-              />
-              <DetailRow label="Served" value={String(p.servedCount || 0)} />
-              <DetailRow label="Attempts" value={p.attempts != null ? String(p.attempts) : '—'} />
-              <DetailRow label="Created" value={fmtDate(p.createdAt as string)} />
-              <DetailRow label="Completed" value={fmtDate(p.completedAt as string)} />
-              <DetailRow label="Source" value={String(p.source || 'auto')} />
-              {!!p.error && (
-                <Text
-                  value={String(p.error)}
-                  size={11}
-                  color="#ff6b6b"
-                  style={{ marginTop: 6, wordBreak: 'break-word' }}
+                <DetailRow label="Patch size" value={fmtBytes(p.size as number)} />
+                <DetailRow label="Target bundle" value={fmtBytes(p.targetBundleSize as number)} />
+                <DetailRow
+                  label="Ratio"
+                  value={p.compressionRatio ? `${((p.compressionRatio as number) * 100).toFixed(1)}%` : '—'}
                 />
-              )}
-            </div>
-          ))}
+                <DetailRow label="Served" value={String(p.servedCount || 0)} />
+                <DetailRow label="Attempts" value={p.attempts != null ? String(p.attempts) : '—'} />
+                <DetailRow label="Created" value={fmtDate(p.createdAt as string)} />
+                <DetailRow label="Completed" value={fmtDate(p.completedAt as string)} />
+                <DetailRow label="Source" value={String(p.source || 'auto')} />
+                {!!p.error && (
+                  <Text
+                    value={String(p.error)}
+                    size={11}
+                    color="#ff6b6b"
+                    style={{ marginTop: 6, wordBreak: 'break-word' }}
+                  />
+                )}
+              </div>
+            )
+          })}
         </Flex>
 
         <Text value="History" bold size={13} style={{ marginTop: 4 }} />
@@ -183,7 +333,13 @@ export const PatchPairDetail = ({ pair, onClose }: { pair: Record<string, unknow
           rows={10}
           emptyMessage="No history"
           style={{ width: '100%' }}>
-          <Column field="at" header="When" body={(r: PatchJobRecord) => fmtDate(r.at)} />
+          <Column
+            field="at"
+            header="When"
+            body={(r: PatchJobRecord) => (
+              <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{fmtDate(r.at)}</span>
+            )}
+          />
           <Column field="platform" header="Platform" />
           <Column
             header="Event"
@@ -248,7 +404,7 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
     { project },
     {
       enabled,
-      defaultSortField: 'latest',
+      defaultSortField: 'latestCreatedAt',
       defaultSortOrder: -1,
       rows: 25,
       enumFields: ['status', 'platform'],
@@ -279,7 +435,10 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
 
   // Flatten the page of pairs into platform rows; trim by active platform/status
   // filters and drop any pair left with no matching rows. pairKey keeps a pair's
-  // rows contiguous so the rowspan grouping merges its From→To cell.
+  // rows contiguous so the rowspan grouping merges its From→To cell. A
+  // synthetic `_isTotal` row is appended per pair (only when more than one
+  // platform is showing) — it carries the server-computed aggregates so the
+  // table reads as ios | android | totals.
   const rows = useMemo(() => {
     const out: Array<Record<string, unknown>> = []
     for (const pair of pt.value) {
@@ -289,6 +448,17 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
       platforms = platforms.slice().sort((a, b) => String(a.platform || '').localeCompare(String(b.platform || '')))
       const pairKey = String(pair._id)
       for (const pl of platforms) out.push({ ...pl, pairKey, _pair: pair })
+      if (platforms.length > 1) {
+        out.push({
+          pairKey,
+          _pair: pair,
+          _isTotal: true,
+          size: pair.totalSize,
+          compressionRatio: pair.avgRatio,
+          servedCount: pair.totalServed,
+          completedAt: pair.latestCreatedAt,
+        })
+      }
     }
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -304,6 +474,9 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
         rows={pt.rows}
         totalRecords={pt.totalRecords}
         onPage={pt.onPage}
+        onSort={pt.onSort}
+        sortField={pt.sortField}
+        sortOrder={pt.sortOrder}
         filterDisplay="menu"
         filters={pt.filters}
         onFilter={pt.onFilter}
@@ -354,7 +527,13 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
               onChange={(v) => o.filterApplyCallback(v)}
             />
           )}
-          body={(r) => String(r.platform || '—')}
+          body={(r) =>
+            r._isTotal ? (
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>TOTAL</span>
+            ) : (
+              String(r.platform || '—')
+            )
+          }
         />
         <Column
           header="Status"
@@ -368,19 +547,39 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
               onChange={(v) => o.filterApplyCallback(v)}
             />
           )}
-          body={(r) => (
-            <Pill value={(r.status as string) || '—'} color={PATCH_STATUS_COLORS[(r.status as string) || '']} />
-          )}
+          body={(r) =>
+            r._isTotal ? null : (
+              <Pill value={(r.status as string) || '—'} color={PATCH_STATUS_COLORS[(r.status as string) || '']} />
+            )
+          }
         />
-        <Column header="Size" body={(r) => fmtBytes(r.size as number)} />
+        <Column
+          header="Size"
+          field="totalSize"
+          sortable
+          body={(r) => <span style={{ fontWeight: r._isTotal ? 600 : 400 }}>{fmtBytes(r.size as number)}</span>}
+        />
         <Column
           header="Ratio"
-          body={(r) => (r.compressionRatio ? `${((r.compressionRatio as number) * 100).toFixed(0)}%` : '—')}
+          field="avgRatio"
+          sortable
+          body={(r) => (
+            <span style={{ fontWeight: r._isTotal ? 600 : 400 }}>
+              {r.compressionRatio ? `${((r.compressionRatio as number) * 100).toFixed(0)}%` : '—'}
+            </span>
+          )}
         />
-        <Column header="Served" body={(r) => String(r.servedCount || 0)} />
+        <Column
+          header="Served"
+          field="totalServed"
+          sortable
+          body={(r) => <span style={{ fontWeight: r._isTotal ? 600 : 400 }}>{String(r.servedCount || 0)}</span>}
+        />
         <Column
           header="Updated"
-          field="createdAt"
+          field="latestCreatedAt"
+          filterField="createdAt"
+          sortable
           filter
           showFilterMatchModes={false}
           filterElement={(o) => (
@@ -391,7 +590,11 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
               maxDate={createdMax}
             />
           )}
-          body={(r) => fmtDate((r.completedAt || r.createdAt) as string)}
+          body={(r) => (
+            <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', fontWeight: r._isTotal ? 600 : 400 }}>
+              {fmtDate((r.completedAt || r.createdAt) as string)}
+            </span>
+          )}
         />
       </DataTable>
 
