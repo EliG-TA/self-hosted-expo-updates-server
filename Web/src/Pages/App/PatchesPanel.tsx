@@ -4,9 +4,8 @@ import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
 import { Dialog } from 'primereact/dialog'
 import { InputText } from 'primereact/inputtext'
-import { MultiSelect } from 'primereact/multiselect'
 
-import { Button, Colors, ConfirmDialog, Flex, Text } from '../../Components'
+import { Button, Colors, ConfirmDialog, Flex, InlineMultiToggle, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery, useLazyTable } from '../../Services'
 import type { AppRecord, PatchJobRecord } from '../../types'
 import { UpdateLink } from './updateDetails'
@@ -48,6 +47,8 @@ const STATUS_OPTIONS = ['pending', 'generating', 'validating', 'ready', 'failed'
   value: s,
 }))
 const PLATFORM_OPTIONS = ['ios', 'android'].map((s) => ({ label: s, value: s }))
+
+const STATUS_OPTIONS_WITH_COLOR = STATUS_OPTIONS.map((o) => ({ ...o, color: PATCH_STATUS_COLORS[o.value] }))
 
 const stackCell = {
   display: 'flex',
@@ -281,7 +282,7 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
         rows={pt.rows}
         totalRecords={pt.totalRecords}
         onPage={pt.onPage}
-        filterDisplay="row"
+        filterDisplay="menu"
         filters={pt.filters}
         onFilter={pt.onFilter}
         loading={pt.loading}
@@ -297,14 +298,12 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
           field="pairKey"
           filterField="fromUpdateId"
           filter
-          showFilterMenu={false}
           filterElement={(o) => (
             <InputText
-              className="p-inputtext-sm"
               value={(o.value as string) || ''}
               onChange={(e) => o.filterApplyCallback(e.target.value)}
               placeholder="updateId…"
-              style={{ width: 130 }}
+              style={{ width: 240, fontSize: 13 }}
             />
           )}
           body={(r) => {
@@ -322,16 +321,12 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
           header="Platform"
           field="platform"
           filter
-          showFilterMenu={false}
+          showFilterMatchModes={false}
           filterElement={(o) => (
-            <MultiSelect
-              className="p-inputtext-sm"
-              value={o.value}
+            <InlineMultiToggle
+              value={o.value as string[] | undefined}
               options={PLATFORM_OPTIONS}
-              onChange={(e) => o.filterApplyCallback(e.value)}
-              placeholder="Platform"
-              maxSelectedLabels={1}
-              style={{ width: 110, fontSize: 12 }}
+              onChange={(v) => o.filterApplyCallback(v)}
             />
           )}
           body={(r) => String(r.platform || '—')}
@@ -340,16 +335,12 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
           header="Status"
           field="status"
           filter
-          showFilterMenu={false}
+          showFilterMatchModes={false}
           filterElement={(o) => (
-            <MultiSelect
-              className="p-inputtext-sm"
-              value={o.value}
-              options={STATUS_OPTIONS}
-              onChange={(e) => o.filterApplyCallback(e.value)}
-              placeholder="Status"
-              maxSelectedLabels={1}
-              style={{ width: 130, fontSize: 12 }}
+            <InlineMultiToggle
+              value={o.value as string[] | undefined}
+              options={STATUS_OPTIONS_WITH_COLOR}
+              onChange={(v) => o.filterApplyCallback(v)}
             />
           )}
           body={(r) => <Pill value={(r.status as string) || '—'} color={PATCH_STATUS_COLORS[(r.status as string) || '']} />}

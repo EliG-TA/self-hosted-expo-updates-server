@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import moment from 'moment'
 import { Column } from 'primereact/column'
-import { DataTable } from 'primereact/datatable'
+import { DataTable, type DataTableFilterMeta } from 'primereact/datatable'
+import { FilterMatchMode } from 'primereact/api'
 import { TabPanel, TabView } from 'primereact/tabview'
 
-import { Button, Card, Colors, ConfirmDialog, Flex, Spinner, StatusPill, Text } from '../../Components'
+import { Button, Card, Colors, ConfirmDialog, Flex, InlineMultiToggle, Spinner, StatusPill, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery } from '../../Services'
 import type { AppRecord, IntegrityIssue, ListResult, ServiceOutcome, UnknownRecord, UploadRecord } from '../../types'
 import { listFromResult } from '../../types'
@@ -19,6 +20,13 @@ const fmtBytes = (n?: number) => {
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
+
+// Mirrors StatusPill: 'ready' is surfaced as "new" in the UI.
+const UPDATE_STATUS_OPTIONS = [
+  { label: 'released', value: 'released', color: '#7fdc96' },
+  { label: 'new', value: 'ready', color: '#7fb3ff' },
+  { label: 'obsolete', value: 'obsolete', color: 'rgba(255,255,255,0.6)' },
+]
 
 const CATEGORY_LABELS = {
   zip: 'Zip',
@@ -901,6 +909,32 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
   const [releasing, setRelasing] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
 
+  const [uploadFilters, setUploadFilters] = useState<DataTableFilterMeta>({
+    updateId: { value: null, matchMode: FilterMatchMode.CONTAINS },
+    releaseChannel: { value: null, matchMode: FilterMatchMode.IN },
+    version: { value: null, matchMode: FilterMatchMode.IN },
+    status: { value: null, matchMode: FilterMatchMode.IN },
+  })
+
+  // Channel/version values are project-scoped and unknown until we see the
+  // uploads list, so derive options from the actual rows. Status uses a
+  // static palette (UPDATE_STATUS_OPTIONS) so the order and labels stay
+  // stable even when one of the three values isn't present yet.
+  const channelOptions = useMemo(
+    () =>
+      Array.from(new Set(uploads.map((u) => u.releaseChannel).filter(Boolean) as string[]))
+        .sort()
+        .map((v) => ({ label: v, value: v })),
+    [uploads],
+  )
+  const versionOptions = useMemo(
+    () =>
+      Array.from(new Set(uploads.map((u) => u.version).filter(Boolean) as string[]))
+        .sort()
+        .map((v) => ({ label: v, value: v })),
+    [uploads],
+  )
+
   if (!isSuccess) return <Spinner />
 
   if (!uploads.length) {
@@ -924,6 +958,8 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
             value={uploads}
             paginator
             rows={10}
+            filters={uploadFilters}
+            onFilter={(e) => setUploadFilters(e.filters)}
             emptyMessage="No app versions yet">
             <Column
               field="updateId"
@@ -955,13 +991,47 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
               sortable
               body={({ createdAt }) => moment(createdAt).format('YYYY-MM-DD HH:mm:ss')}
             />
-            <Column field="releaseChannel" header="Channel" filter sortable />
-            <Column field="version" header="Version" filter sortable />
+            <Column
+              field="releaseChannel"
+              header="Channel"
+              filter
+              sortable
+              showFilterMatchModes={false}
+              filterElement={(o) => (
+                <InlineMultiToggle
+                  value={o.value as string[] | undefined}
+                  options={channelOptions}
+                  onChange={(v) => o.filterApplyCallback(v)}
+                />
+              )}
+            />
+            <Column
+              field="version"
+              header="Version"
+              filter
+              sortable
+              showFilterMatchModes={false}
+              filterElement={(o) => (
+                <InlineMultiToggle
+                  value={o.value as string[] | undefined}
+                  options={versionOptions}
+                  onChange={(v) => o.filterApplyCallback(v)}
+                />
+              )}
+            />
             <Column
               field="status"
               header="Status"
               filter
               sortable
+              showFilterMatchModes={false}
+              filterElement={(o) => (
+                <InlineMultiToggle
+                  value={o.value as string[] | undefined}
+                  options={UPDATE_STATUS_OPTIONS}
+                  onChange={(v) => o.filterApplyCallback(v)}
+                />
+              )}
               body={({ status }) => <StatusPill status={status} />}
             />
           </DataTable>
