@@ -85,6 +85,7 @@ export interface UploadRecord extends UnknownRecord {
   updateHash?: string
   createdAt?: string | Date
   releasedAt?: string | Date
+  deletedAt?: string | Date
   gitCommit?: string
   gitBranch?: string
   appJson?: unknown

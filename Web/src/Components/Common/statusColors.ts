@@ -14,13 +14,14 @@ export const PATCH_STATUS_COLORS: Record<string, string> = {
   'not-beneficial': '#ffa94d',
 }
 
-// Upload lifecycle (the upload document itself: ready=new, released, obsolete).
-// Reuses the StatusPill palette so UI references to upload status look
-// identical whether they go through StatusPill or a plain Pill.
+// Upload lifecycle (the upload document itself: ready=new, released,
+// obsolete, deleted). `deleted` is a soft-delete tombstone — the row keeps
+// its identity for stats/audit but is excluded from default list views.
 export const UPLOAD_STATUS_COLORS: Record<string, string> = {
   released: '#7fdc96',
   ready: '#7fb3ff', // displayed as "new" in the UI
   obsolete: 'rgba(255,255,255,0.6)',
+  deleted: '#ef5350',
 }
 
 // Patch-jobs audit events (PatchPairDetail history table).

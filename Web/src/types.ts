@@ -43,6 +43,7 @@ export interface UploadRecord extends UnknownRecord {
   uploadAvailable?: boolean
   createdAt?: string | Date
   releasedAt?: string | Date
+  deletedAt?: string | Date
   gitCommit?: string
   gitBranch?: string
   embeddedIos?: boolean

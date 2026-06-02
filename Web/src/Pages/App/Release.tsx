@@ -22,6 +22,7 @@ export const Release = ({ update, onHide }: ReleaseProps) => {
   const [releasing, setRelasing] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [purging, setPurging] = useState(false)
   const [activeTab, setActiveTab] = useState(UpdateInfo.OVERVIEW_TAB_INDEX)
   const [integrity, setIntegrity] = useState<IntegrityRecord | null>(null)
   const [integrityLoading, setIntegrityLoading] = useState(false)
@@ -48,11 +49,19 @@ export const Release = ({ update, onHide }: ReleaseProps) => {
 
   const isReleased = update?.status === 'released'
   const isObsolete = update?.status === 'obsolete'
+  const isDeleted = update?.status === 'deleted'
   const hasIntegrityErrors = (integrity?.errorCount || 0) > 0
+
+  const ACTION_SUCCESS_VERB: Record<string, string> = {
+    release: 'published',
+    delete: 'deleted',
+    purgeDeleted: 'purged',
+  }
 
   const handleAction = (action: string) => async () => {
     setDeleting(false)
     setConfirming(false)
+    setPurging(false)
     setRelasing(true)
     try {
       const outcome = (await FC.client.service('utils').update(action, { uploadId: update._id })) as ServiceOutcome
@@ -61,7 +70,7 @@ export const Release = ({ update, onHide }: ReleaseProps) => {
       window.toast.show({
         severity: 'info',
         summary: 'Success',
-        detail: `Update succesfully ${action === 'release' ? 'published' : 'deleted'}.`,
+        detail: `Update succesfully ${ACTION_SUCCESS_VERB[action] || 'processed'}.`,
       })
     } catch (e) {
       window.toast.show({
@@ -77,7 +86,7 @@ export const Release = ({ update, onHide }: ReleaseProps) => {
 
   const actionLabel = isReleased ? 'App is currently released' : isObsolete ? 'Rollback' : 'Release'
 
-  const releaseDisabled = isReleased || hasIntegrityErrors || integrityLoading
+  const releaseDisabled = isReleased || isDeleted || hasIntegrityErrors || integrityLoading
   const releaseTitle = isReleased
     ? 'Already released'
     : hasIntegrityErrors
@@ -122,15 +131,27 @@ export const Release = ({ update, onHide }: ReleaseProps) => {
             </div>
           )}
           <Flex row fw jb>
-            <Button
-              disabled={releaseDisabled}
-              icon="upload"
-              label={actionLabel}
-              onClick={() => setConfirming(true)}
-              tooltip={releaseTitle}
-              title={releaseTitle}
-            />
-            <Button disabled={isReleased} icon="trash" label="DELETE" danger onClick={() => setDeleting(true)} />
+            {!isDeleted && (
+              <Button
+                disabled={releaseDisabled}
+                icon="upload"
+                label={actionLabel}
+                onClick={() => setConfirming(true)}
+                tooltip={releaseTitle}
+                title={releaseTitle}
+              />
+            )}
+            {isDeleted ? (
+              <Button
+                icon="trash"
+                label="PURGE PERMANENTLY"
+                danger
+                onClick={() => setPurging(true)}
+                title="Remove the tombstone row from the database. This cannot be undone."
+              />
+            ) : (
+              <Button disabled={isReleased} icon="trash" label="DELETE" danger onClick={() => setDeleting(true)} />
+            )}
           </Flex>
         </Flex>
       )
@@ -186,6 +207,23 @@ export const Release = ({ update, onHide }: ReleaseProps) => {
         <Flex jb row fw style={{ marginTop: 20 }}>
           <Button icon="ban" label="Cancel" onClick={() => setDeleting(false)} />
           <Button icon="check" label="DELETE" danger onClick={handleAction('delete')} />
+        </Flex>
+      </Dialog>
+
+      <Dialog
+        visible={purging}
+        modal
+        style={{ width: '100%', maxWidth: 600 }}
+        onHide={() => setPurging(false)}
+        header={<Text value="Purge Upload Record" bold size={28} />}>
+        <Text
+          value={`You are about to permanently remove the database record for ${update.updateId}. The disk files were already deleted at soft-delete time; this drops the tombstone row, so stats can no longer resolve client telemetry referencing this updateId.`}
+        />
+        <Text value="This action cannot be undone. Are you sure?" style={{ marginTop: 20 }} />
+
+        <Flex jb row fw style={{ marginTop: 20 }}>
+          <Button icon="ban" label="Cancel" onClick={() => setPurging(false)} />
+          <Button icon="check" label="PURGE" danger onClick={handleAction('purgeDeleted')} />
         </Flex>
       </Dialog>
     </>

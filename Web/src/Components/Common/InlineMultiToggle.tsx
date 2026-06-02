@@ -10,6 +10,11 @@
 //                              pick specific values). Backend treats this
 //                              the same as "no filter" so the table doesn't
 //                              flash empty.
+//
+// `defaultValue` (optional): when the caller wants Clear to revert to a
+// specific subset rather than empty. Used e.g. by All Updates → Status, where
+// "everything except deleted" is the intended starting point and Clear should
+// snap back to that, not blank out the whole filter.
 
 export interface InlineMultiToggleOption {
   label: string
@@ -17,13 +22,22 @@ export interface InlineMultiToggleOption {
   color?: string
 }
 
+const sameSet = (a: string[] | null | undefined, b: string[] | null | undefined) => {
+  if (!a || !b) return false
+  if (a.length !== b.length) return false
+  const setB = new Set(b)
+  return a.every((v) => setB.has(v))
+}
+
 export const InlineMultiToggle = ({
   value,
   options,
+  defaultValue,
   onChange,
 }: {
   value?: string[] | null
   options: InlineMultiToggleOption[]
+  defaultValue?: string[]
   onChange: (next: string[] | null) => void
 }) => {
   const isDefault = value == null
@@ -40,7 +54,12 @@ export const InlineMultiToggle = ({
     else onChange(Array.from(next))
   }
   const allSelected = isDefault || (Array.isArray(value) && value.length === options.length)
-  const noneSelected = isCleared
+  // Clear: when a caller-supplied default exists, "Clear" snaps back to it.
+  // The button is disabled when we're already there. Otherwise the legacy
+  // semantic applies: clearing empties the selection (visual "none checked").
+  const isAtDefault = !!defaultValue && Array.isArray(value) && sameSet(value, defaultValue)
+  const clearTarget: string[] | null = defaultValue ? [...defaultValue] : []
+  const clearDisabled = defaultValue ? isAtDefault : isCleared
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 200 }}>
       <div
@@ -71,19 +90,19 @@ export const InlineMultiToggle = ({
         </button>
         <button
           type="button"
-          disabled={noneSelected}
+          disabled={clearDisabled}
           onClick={(e) => {
             e.preventDefault()
-            onChange([])
+            onChange(clearTarget)
           }}
           style={{
             background: 'none',
             border: 'none',
             padding: 0,
-            cursor: noneSelected ? 'default' : 'pointer',
+            cursor: clearDisabled ? 'default' : 'pointer',
             fontSize: 11,
-            color: noneSelected ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
-            textDecoration: noneSelected ? 'none' : 'underline',
+            color: clearDisabled ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)',
+            textDecoration: clearDisabled ? 'none' : 'underline',
           }}>
           Clear
         </button>

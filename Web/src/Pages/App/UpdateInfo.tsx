@@ -626,7 +626,7 @@ const OverviewTab = ({ update }: { update: UploadRecord }) => (
       <Row label="Uploaded File" value={update.filename} mono />
     </Section>
 
-    <SizesSection uploadId={update._id} />
+    {update.status !== 'deleted' && <SizesSection uploadId={update._id} />}
   </div>
 )
 
@@ -671,21 +671,32 @@ export const UpdateInfo = ({
         <TabPanel header="Overview">
           <OverviewTab update={update} />
         </TabPanel>
-        <TabPanel header="Patches">
-          <div style={{ width: '100%', minHeight: 600 }}>
-            <PatchesTab uploadId={update._id} project={update.project} />
-          </div>
-        </TabPanel>
-        <TabPanel header="app.json">
-          <div style={{ width: '100%', minHeight: 600 }}>
-            <Input multiline value={JSON.stringify(update.appJson, null, 2)} rows={20} style={{ width: '100%' }} />
-          </div>
-        </TabPanel>
-        <TabPanel header="package.json">
-          <div style={{ width: '100%', minHeight: 600 }}>
-            <Input multiline value={JSON.stringify(update.dependencies, null, 2)} rows={20} style={{ width: '100%' }} />
-          </div>
-        </TabPanel>
+        {update.status !== 'deleted' && (
+          <TabPanel header="Patches">
+            <div style={{ width: '100%', minHeight: 600 }}>
+              <PatchesTab uploadId={update._id} project={update.project} />
+            </div>
+          </TabPanel>
+        )}
+        {update.appJson != null && (
+          <TabPanel header="app.json">
+            <div style={{ width: '100%', minHeight: 600 }}>
+              <Input multiline value={JSON.stringify(update.appJson, null, 2)} rows={20} style={{ width: '100%' }} />
+            </div>
+          </TabPanel>
+        )}
+        {update.dependencies != null && (
+          <TabPanel header="package.json">
+            <div style={{ width: '100%', minHeight: 600 }}>
+              <Input
+                multiline
+                value={JSON.stringify(update.dependencies, null, 2)}
+                rows={20}
+                style={{ width: '100%' }}
+              />
+            </div>
+          </TabPanel>
+        )}
       </TabView>
     </div>
   )

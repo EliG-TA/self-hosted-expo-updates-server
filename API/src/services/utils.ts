@@ -3,11 +3,12 @@ import * as fs from 'fs'
 import * as path from 'path'
 
 import s from '../hooks/security'
+import { logger } from '../modules'
 import { generateSelfSigned } from '../modules/expo/certs'
 import { getMetadataSync } from '../modules/expo/helpers'
 import { checkSingleIntegrity } from '../modules/expo/integrity'
-import { getLaunchAssetPath, sumPatchesSize } from '../modules/expo/patch'
-import type { AppLike, UnknownRecord, UploadRecord } from '../types'
+import { deletePatchFile, getLaunchAssetPath, sumPatchesSize } from '../modules/expo/patch'
+import type { AppLike, PatchRecord, UnknownRecord, UploadRecord } from '../types'
 
 const UPLOADS_ROOT = process.env.UPLOADS_ROOT || '/uploads'
 const UPDATES_ROOT = process.env.UPDATES_ROOT || '/updates'
@@ -53,6 +54,9 @@ class Service {
 
     const upload = (await this.app.service('uploads').get(uploadId)) as UploadRecord
     if (!upload) throw new Err.NotFound('Upload not found')
+    if (upload.status === 'deleted') {
+      throw new Err.BadRequest('Cannot release: this update has been deleted (disk files are gone)')
+    }
 
     // Pre-flight: refuse to release/rollback an upload whose files are
     // broken — clients would hit 404/corrupt-bundle errors. Warnings are
@@ -112,14 +116,76 @@ class Service {
     removeOne(upload.path, 'extracted-dir', { recursive: true })
     removeOne(upload.filename, 'zip-archive')
 
-    await this.app.service('uploads').remove(upload._id)
+    // Cascade-remove dependent patches. Their disk files referenced the
+    // upload we just wiped, so the patches are unrecoverable; the asset
+    // endpoint already treats missing patch files as 'mark-failed-then-
+    // fallback', but cleaning them up here prevents the lazy-fix churn.
+    // (Used to happen automatically via uploads.before.remove hook — we
+    // soft-delete the upload now, so the cascade has to be explicit.)
+    try {
+      const patches = this.app.service('patches')
+      const related = await patches.find({
+        query: { $or: [{ fromUploadId: upload._id }, { toUploadId: upload._id }], $limit: 1000 },
+      })
+      const docs = Array.isArray(related)
+        ? (related as PatchRecord[])
+        : (related as { data?: PatchRecord[] })?.data || []
+      for (const doc of docs) {
+        deletePatchFile(doc.path)
+        try {
+          await patches.remove(doc._id, { reason: 'upload-deleted' })
+        } catch (e) {
+          /* already gone */
+        }
+      }
+      if (docs.length) await this.app.service('patch-pairs').pruneEmpty?.()
+    } catch (e) {
+      logger.warn('utils.deleteRelease: patch cascade failed', {
+        uploadId: upload._id,
+        error: e instanceof Error ? e.message : String(e),
+      })
+    }
+
+    // Soft-delete: keep updateId / updateHash / version / releaseChannel /
+    // gitCommit / gitBranch / createdAt / releasedAt so the stats service
+    // can still resolve client-reported updateIds back to a known upload
+    // (and so admins can re-surface the row by toggling the 'deleted'
+    // status filter). Everything that describes the now-gone bundle on disk
+    // — paths, zip size, parsed app.json, parsed package.json deps — is
+    // nulled so the UpdateInfo dialog doesn't keep displaying stale content
+    // about files that don't exist anymore.
+    await this.app.service('uploads').patch(upload._id, {
+      status: 'deleted',
+      deletedAt: new Date(),
+      path: null,
+      filename: null,
+      size: null,
+      appJson: null,
+      dependencies: null,
+    })
 
     return { message: 'Update Deleted', ops: fileOps }
+  }
+
+  // Hard-delete a previously soft-deleted upload. The patches cascade and
+  // disk cleanup already happened at soft-delete time, so this just removes
+  // the tombstone row. Refuse to purge non-deleted uploads — soft-delete is
+  // the only entry point for that flow.
+  async purgeDeleted({ uploadId }) {
+    if (!uploadId) throw new Err.BadRequest('Missing uploadId')
+    const upload = (await this.app.service('uploads').get(uploadId)) as UploadRecord
+    if (!upload) throw new Err.NotFound('Upload not found')
+    if (upload.status !== 'deleted') {
+      throw new Err.BadRequest('Only soft-deleted uploads can be purged. Delete it first.')
+    }
+    await this.app.service('uploads').remove(upload._id)
+    return { message: 'Update purged', uploadId: upload._id }
   }
 
   async update(id, data) {
     if (id === 'release') return this.setRelease(data)
     if (id === 'delete') return this.deleteRelease(data)
+    if (id === 'purgeDeleted') return this.purgeDeleted(data || {})
     if (id === 'cleanupOldUpdates') return this.cleanupOldUpdates(data || {})
     if (id === 'checkIntegrity') return this.checkIntegrity(data || {})
     if (id === 'scanOrphans') return this.scanOrphans(data || {})
@@ -261,6 +327,10 @@ class Service {
     const categoryCounts = {}
 
     for (const up of uploads) {
+      // Soft-deleted uploads have their disk files removed on purpose; the
+      // integrity walker would otherwise flag every missing-file category as
+      // an error against them. Skip — they're tombstones, not problems.
+      if (up?.status === 'deleted') continue
       const { issues, errorCount, warningCount } = checkSingleIntegrity(up)
       if (!issues.length) continue
 
@@ -283,10 +353,14 @@ class Service {
 
     const errorRowCount = problems.filter((p) => p.errorCount > 0).length
     const warningRowCount = problems.filter((p) => p.errorCount === 0 && p.warningCount > 0).length
+    // Tombstone uploads were skipped in the loop above — exclude them from
+    // the "checked N uploads" headline so the count matches what was
+    // actually walked.
+    const checkedCount = uploads.filter((u) => u?.status !== 'deleted').length
 
     return {
       project,
-      checkedCount: uploads.length,
+      checkedCount,
       problemCount: problems.length,
       errorRowCount,
       warningRowCount,

@@ -14,6 +14,7 @@ const TRANSLUCENT_BG: Record<string, string> = {
   released: 'rgba(76, 175, 80, 0.22)',
   ready: 'rgba(66, 165, 245, 0.22)',
   obsolete: 'rgba(255, 255, 255, 0.08)',
+  deleted: 'rgba(239, 83, 80, 0.18)',
 }
 
 export const StatusPill = ({ status }: { status?: string }) => {

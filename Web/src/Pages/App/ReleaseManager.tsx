@@ -58,8 +58,11 @@ const fmtBytes = (n?: number) => {
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
-// Derived from shared UPLOAD_STATUS_COLORS / UPLOAD_STATUS_LABELS so the
-// filter chips colour-match StatusPill anywhere upload status is rendered.
+// Status filter chips show the live lifecycle states only — 'deleted' is
+// handled by a separate "Show deleted" toolbar toggle so the chip's funnel
+// icon doesn't show as "active" on first paint, and PrimeReact's built-in
+// Clear button (inside the popover) can't accidentally re-introduce
+// soft-deleted rows.
 const UPDATE_STATUS_OPTIONS = ['released', 'ready', 'obsolete'].map((value) => ({
   label: UPLOAD_STATUS_LABELS[value] || value,
   value,
@@ -952,6 +955,15 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
     status: { value: null, matchMode: FilterMatchMode.IN },
     createdAt: { value: null, matchMode: 'dateRange' },
   })
+  // 'deleted' uploads are filtered at the data layer so the Status column's
+  // funnel icon doesn't show as "active" on first paint. Toggle to surface
+  // soft-deleted rows in the table.
+  const [showDeleted, setShowDeleted] = useState(false)
+  const visibleUploads = useMemo(
+    () => (showDeleted ? uploads : uploads.filter((u) => u.status !== 'deleted')),
+    [uploads, showDeleted],
+  )
+  const deletedCount = useMemo(() => uploads.filter((u) => u.status === 'deleted').length, [uploads])
 
   // Channel/version values are project-scoped and unknown until we see the
   // uploads list, so derive options from the actual rows. Status uses a
@@ -959,17 +971,17 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
   // stable even when one of the three values isn't present yet.
   const channelOptions = useMemo(
     () =>
-      Array.from(new Set(uploads.map((u) => u.releaseChannel).filter(Boolean) as string[]))
+      Array.from(new Set(visibleUploads.map((u) => u.releaseChannel).filter(Boolean) as string[]))
         .sort()
         .map((v) => ({ label: v, value: v })),
-    [uploads],
+    [visibleUploads],
   )
   const versionOptions = useMemo(
     () =>
-      Array.from(new Set(uploads.map((u) => u.version).filter(Boolean) as string[]))
+      Array.from(new Set(visibleUploads.map((u) => u.version).filter(Boolean) as string[]))
         .sort()
         .map((v) => ({ label: v, value: v })),
-    [uploads],
+    [visibleUploads],
   )
 
   const hasActiveFilter = Object.values(uploadFilters).some((f) => {
@@ -1014,7 +1026,7 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
         <TabPanel header="All Updates">
           <DataTable
             style={{ marginTop: 10, width: '100%' }}
-            value={uploads}
+            value={visibleUploads}
             paginator
             rows={25}
             filterDisplay="menu"
@@ -1111,6 +1123,29 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
               body={({ status }) => <StatusPill status={status} />}
             />
           </DataTable>
+          {deletedCount > 0 && (
+            <Flex row style={{ justifyContent: 'flex-end', marginTop: 6 }}>
+              <label
+                onClick={(e) => {
+                  e.preventDefault()
+                  setShowDeleted((v) => !v)
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  color: 'rgba(255,255,255,0.7)',
+                  userSelect: 'none',
+                }}>
+                <input type="checkbox" checked={showDeleted} readOnly style={{ margin: 0, cursor: 'pointer' }} />
+                <span>
+                  Show {deletedCount} deleted update{deletedCount === 1 ? '' : 's'}
+                </span>
+              </label>
+            </Flex>
+          )}
         </TabPanel>
         <TabPanel header="Patches">
           <PatchesPanel app={app} enabled={activeTab === 1} />
