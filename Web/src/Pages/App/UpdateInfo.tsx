@@ -4,14 +4,13 @@ import moment from 'moment'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
 import { InputText } from 'primereact/inputtext'
-import { MultiSelect } from 'primereact/multiselect'
 import { TabPanel, TabView } from 'primereact/tabview'
 
-import { Button, Colors, Flex, Input, Spinner, Text } from '../../Components'
+import { Button, Colors, DateRangeFilter, Flex, InlineMultiToggle, Input, Spinner, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery, useLazyTable } from '../../Services'
 import type { ListResult, PatchRecord, UnknownRecord, UploadRecord } from '../../types'
 import { listFromResult } from '../../types'
-import { PatchPairDetail } from './PatchesPanel'
+import { PatchPairDetail, PlatformCell } from './PatchesPanel'
 import { UpdateLink } from './updateDetails'
 
 interface UpdateSizes extends UnknownRecord {
@@ -224,13 +223,32 @@ const DirectionalTable = ({
   label: string
   onOpenPair: (pair: Record<string, unknown>) => void
 }) => {
-  const t = useLazyTable<Record<string, unknown>>('patchesPage', base, {
-    defaultSortField: counterpartField,
-    defaultSortOrder: 1,
+  // Paginate over pairs (not individual patches) so the per-pair aggregates
+  // computed in patch-pairs.page() are available for the totals row + for
+  // server-side sorting by totalSize / avgRatio / totalServed / latestCreatedAt.
+  const t = useLazyTable<Record<string, unknown>>('patchPairsPage', base, {
+    defaultSortField: 'latestCreatedAt',
+    defaultSortOrder: -1,
     rows: 25,
     enumFields: ['status', 'platform'],
     searchField: counterpartField,
+    dateFields: ['createdAt'],
   })
+
+  // Soft date bounds derived from the loaded page — same approach as
+  // PatchesPanel. User can still pick outside; just guides the typical case.
+  const [createdMin, createdMax] = useMemo(() => {
+    let lo = Infinity
+    let hi = -Infinity
+    for (const pair of t.value) {
+      const ts = pair.latestCreatedAt ? new Date(pair.latestCreatedAt as string).getTime() : NaN
+      if (!isFinite(ts)) continue
+      if (ts < lo) lo = ts
+      if (ts > hi) hi = ts
+    }
+    return isFinite(lo) ? [new Date(lo), new Date(hi)] : [undefined, undefined]
+  }, [t.value])
+
   return (
     <DataTable
       value={t.value}
@@ -243,15 +261,13 @@ const DirectionalTable = ({
       onSort={t.onSort}
       sortField={t.sortField}
       sortOrder={t.sortOrder}
-      filterDisplay="row"
+      filterDisplay="menu"
       filters={t.filters}
       onFilter={t.onFilter}
       loading={t.loading}
       paginatorTemplate="FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
-      currentPageReportTemplate="{first}–{last} of {totalRecords}"
+      currentPageReportTemplate="{first}–{last} of {totalRecords} pairs"
       size="small"
-      rowGroupMode="rowspan"
-      groupRowsBy={counterpartField}
       style={{ width: '100%' }}
       emptyMessage="None.">
       <Column
@@ -259,19 +275,17 @@ const DirectionalTable = ({
         field={counterpartField}
         sortable
         filter
-        showFilterMenu={false}
         filterElement={(o) => (
           <InputText
-            className="p-inputtext-sm"
             value={(o.value as string) || ''}
             onChange={(e) => o.filterApplyCallback(e.target.value)}
             placeholder="updateId…"
-            style={{ width: 130 }}
+            style={{ width: 240, fontSize: 13 }}
           />
         )}
-        body={(row) => (
+        body={(pair: Record<string, unknown>) => (
           <span
-            onClick={() => onOpenPair({ _id: row.pairId, fromUpdateId: row.fromUpdateId, toUpdateId: row.toUpdateId })}
+            onClick={() => onOpenPair(pair)}
             title="Open patch details"
             style={{
               cursor: 'pointer',
@@ -281,7 +295,7 @@ const DirectionalTable = ({
               color: Colors.primary,
               textDecoration: 'underline dotted',
             }}>
-            {String(row[counterpartField] || '—')}
+            {String(pair[counterpartField] || '—')}
           </span>
         )}
       />
@@ -289,46 +303,113 @@ const DirectionalTable = ({
         header="Platform"
         field="platform"
         filter
-        showFilterMenu={false}
+        showFilterMatchModes={false}
         filterElement={(o) => (
-          <MultiSelect
-            className="p-inputtext-sm"
-            value={o.value}
+          <InlineMultiToggle
+            value={o.value as string[] | undefined}
             options={PATCH_PLATFORM_OPTIONS}
-            onChange={(e) => o.filterApplyCallback(e.value)}
-            placeholder="Platform"
-            maxSelectedLabels={1}
-            style={{ width: 110, fontSize: 12 }}
+            onChange={(v) => o.filterApplyCallback(v)}
           />
         )}
-        body={(row) => String(row.platform || '—')}
+        body={(pair: Record<string, unknown>) => (
+          <PlatformCell
+            pair={pair}
+            showLabels={false}
+            render={(p, platform) =>
+              p ? (
+                <span>{String(p.platform)}</span>
+              ) : (
+                <span style={{ color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>{platform}</span>
+              )
+            }
+          />
+        )}
       />
       <Column
         header="Status"
         field="status"
         filter
-        showFilterMenu={false}
+        showFilterMatchModes={false}
         filterElement={(o) => (
-          <MultiSelect
-            className="p-inputtext-sm"
-            value={o.value}
+          <InlineMultiToggle
+            value={o.value as string[] | undefined}
             options={PATCH_STATUS_OPTIONS}
-            onChange={(e) => o.filterApplyCallback(e.value)}
-            placeholder="Status"
-            maxSelectedLabels={1}
-            style={{ width: 130, fontSize: 12 }}
+            onChange={(v) => o.filterApplyCallback(v)}
           />
         )}
-        body={(row) => <StatusBadge status={row.status} />}
+        body={(pair: Record<string, unknown>) => (
+          <PlatformCell
+            pair={pair}
+            showLabels={false}
+            render={(p) =>
+              p ? (
+                <StatusBadge status={p.status as string | undefined} />
+              ) : (
+                <span style={{ color: 'rgba(255,255,255,0.4)', fontStyle: 'italic', fontSize: 11 }}>not generated</span>
+              )
+            }
+          />
+        )}
       />
-      <Column field="completedAt" header="Updated" body={(row) => formatDate(row.completedAt || row.createdAt)} />
-      <Column field="size" header="Size" body={(row) => getSize(row.size || 0)} />
       <Column
-        field="compressionRatio"
-        header="Ratio"
-        body={(row) => (row.compressionRatio ? `${(row.compressionRatio * 100).toFixed(0)}%` : '—')}
+        field="latestCreatedAt"
+        header="Updated"
+        sortable
+        filter
+        filterField="createdAt"
+        showFilterMatchModes={false}
+        filterElement={(o) => (
+          <DateRangeFilter
+            value={o.value}
+            onChange={(v) => o.filterCallback(v)}
+            minDate={createdMin}
+            maxDate={createdMax}
+          />
+        )}
+        body={(pair: Record<string, unknown>) => (
+          <PlatformCell
+            pair={pair}
+            render={(p) => (
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatDate(p?.completedAt || p?.createdAt)}</span>
+            )}
+            total={
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatDate(pair.latestCreatedAt as string)}</span>
+            }
+          />
+        )}
       />
-      <Column field="servedCount" header="Served" body={(row) => row.servedCount || 0} />
+      <Column
+        field="totalSize"
+        header="Size"
+        sortable
+        body={(pair: Record<string, unknown>) => (
+          <PlatformCell
+            pair={pair}
+            render={(p) => (p?.size != null ? getSize(p.size as number) : '—')}
+            total={getSize((pair.totalSize as number) || 0)}
+          />
+        )}
+      />
+      <Column
+        field="avgRatio"
+        header="Ratio"
+        sortable
+        body={(pair: Record<string, unknown>) => (
+          <PlatformCell
+            pair={pair}
+            render={(p) => (p?.compressionRatio ? `${((p.compressionRatio as number) * 100).toFixed(1)}%` : '—')}
+            total={pair.avgRatio ? `${((pair.avgRatio as number) * 100).toFixed(1)}%` : '—'}
+          />
+        )}
+      />
+      <Column
+        field="totalServed"
+        header="Served"
+        sortable
+        body={(pair: Record<string, unknown>) => (
+          <PlatformCell pair={pair} render={(p) => String(p?.servedCount || 0)} total={String(pair.totalServed || 0)} />
+        )}
+      />
     </DataTable>
   )
 }
@@ -486,6 +567,7 @@ const CreatePatchTable = ({ uploadId, project }: { uploadId: string; project?: s
 const PATCH_STATUS_OPTIONS = ['pending', 'generating', 'validating', 'ready', 'failed', 'not-beneficial'].map((s) => ({
   label: s,
   value: s,
+  color: STATUS_COLORS[s as keyof typeof STATUS_COLORS],
 }))
 const PATCH_PLATFORM_OPTIONS = ['ios', 'android'].map((s) => ({ label: s, value: s }))
 

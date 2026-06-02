@@ -6,6 +6,7 @@ import error from '../hooks/error'
 import s from '../hooks/security'
 import { logger } from '../modules'
 import type { AppLike, HookContextLike, UnknownRecord } from '../types'
+import { idMatch } from './lib/list-query'
 
 // A `patch-pair` is the logical from→to transition. Per-platform `patches`
 // reference it via `pairId`; `patch-jobs` history rows carry `pairId` too. The
@@ -113,6 +114,11 @@ class PatchPairsService extends MongoDBService {
 
     const preMatch: UnknownRecord = {}
     if (query.project) preMatch.project = query.project
+    // Per-update directional scoping: incoming patches → toUploadId fixed,
+    // outgoing → fromUploadId fixed. Stored as ObjectId; idMatch lets the
+    // client pass either a string or an ObjectId.
+    if (query.fromUploadId) preMatch.fromUploadId = idMatch(query.fromUploadId)
+    if (query.toUploadId) preMatch.toUploadId = idMatch(query.toUploadId)
     if (typeof query.search === 'string' && query.search.trim()) {
       const rx = { $regex: escapeRegex(query.search.trim()), $options: 'i' }
       preMatch.$or = [{ fromUpdateId: rx }, { toUpdateId: rx }]
@@ -153,7 +159,20 @@ class PatchPairsService extends MongoDBService {
         $addFields: {
           totalSize: { $sum: '$platforms.size' },
           totalServed: { $sum: '$platforms.servedCount' },
-          latestCreatedAt: { $max: '$platforms.createdAt' },
+          // "Last updated" semantically — prefers `completedAt` (set when
+          // the worker finishes) and falls back to `createdAt` for pending
+          // patches. Need `$map` over the platforms array because $ifNull
+          // works on scalars, not on the implicit array path expansion of
+          // `$platforms.completedAt`.
+          latestCreatedAt: {
+            $max: {
+              $map: {
+                input: '$platforms',
+                as: 'p',
+                in: { $ifNull: ['$$p.completedAt', '$$p.createdAt'] },
+              },
+            },
+          },
           // Average compression ratio across the pair's platforms. Skips
           // null/undefined entries because $avg returns null when ALL inputs
           // are null — that null is then sortable (nulls land at one end).

@@ -1,11 +1,21 @@
 import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import moment from 'moment'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
 import { Dialog } from 'primereact/dialog'
 import { InputText } from 'primereact/inputtext'
 
-import { Button, Colors, ConfirmDialog, DateRangeFilter, Flex, InlineMultiToggle, StatusPill, Text } from '../../Components'
+import {
+  Button,
+  Colors,
+  ConfirmDialog,
+  DateRangeFilter,
+  Flex,
+  InlineMultiToggle,
+  StatusPill,
+  Text,
+} from '../../Components'
 import { FC, invalidateQuery, useCQuery, useLazyTable } from '../../Services'
 import type { AppRecord, ListResult, PatchJobRecord, UploadRecord } from '../../types'
 import { listFromResult } from '../../types'
@@ -95,6 +105,51 @@ const DetailRow = ({ label, value }: { label: string; value: string }) => (
 // update; the table header that opens this card does not.
 const ALL_PLATFORMS: Array<'ios' | 'android'> = ['ios', 'android']
 
+// Renders a per-platform stack inside one table cell — the entire "ios row +
+// android row + (optional) total row" lives in a single cell of a single
+// pair-level row. Keeps the table to one row per pair so the from→to / size /
+// ratio / served / updated values stay column-aligned across pairs.
+export const PlatformCell = ({
+  pair,
+  render,
+  total,
+  showLabels = true,
+}: {
+  pair: Record<string, unknown>
+  render: (p: Record<string, unknown> | undefined, platform: 'ios' | 'android') => ReactNode
+  total?: ReactNode
+  showLabels?: boolean
+}) => {
+  const platforms = (pair.platforms as Array<Record<string, unknown>>) || []
+  const byName = new Map(platforms.map((p) => [String(p.platform), p]))
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+      {ALL_PLATFORMS.map((name) => (
+        <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 18 }}>
+          {showLabels && <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', minWidth: 48 }}>{name}</span>}
+          <span style={{ fontSize: 12 }}>{render(byName.get(name), name)}</span>
+        </div>
+      ))}
+      {total != null && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            paddingTop: 2,
+            marginTop: 2,
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+          }}>
+          {showLabels && (
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', minWidth: 48, fontWeight: 600 }}>total</span>
+          )}
+          <span style={{ fontSize: 12, fontWeight: 600 }}>{total}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // gitCommit on UploadRecord is the full `git log --oneline -n 1` output —
 // short sha + subject. Split so the hash gets monospace styling and the
 // subject reads as prose. Matches the rendering in PublishedUpdates.
@@ -125,12 +180,8 @@ const UpdateSideCard = ({ label, upload, updateId }: { label: string; upload?: U
         {upload?.status && <StatusPill status={upload.status} />}
       </Flex>
       <UpdateLink updateId={updateId} />
-      {upload?.createdAt && (
-        <DetailRow label="Created" value={fmtDate(upload.createdAt as string)} />
-      )}
-      {upload?.releasedAt && (
-        <DetailRow label="Released" value={fmtDate(upload.releasedAt as string)} />
-      )}
+      {upload?.createdAt && <DetailRow label="Created" value={fmtDate(upload.createdAt as string)} />}
+      {upload?.releasedAt && <DetailRow label="Released" value={fmtDate(upload.releasedAt as string)} />}
       {upload?.size != null && <DetailRow label="Bundle" value={fmtBytes(upload.size)} />}
       {commit.hash && (
         <Flex as style={{ marginTop: 4, gap: 2 }}>
@@ -414,9 +465,6 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
   )
   const [selectedPair, setSelectedPair] = useState<Record<string, unknown> | null>(null)
 
-  const platformSel = (pt.filters.platform as { value?: unknown } | undefined)?.value as string[] | null
-  const statusSel = (pt.filters.status as { value?: unknown } | undefined)?.value as string[] | null
-
   // Bounds for the date-range picker. Server-paginated, so this only sees
   // the currently loaded page — good enough as a soft hint, and the user
   // can still pick any date manually if they're chasing older patches that
@@ -433,36 +481,10 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
     return isFinite(lo) ? [new Date(lo), new Date(hi)] : [undefined, undefined]
   }, [pt.value])
 
-  // Flatten the page of pairs into platform rows; trim by active platform/status
-  // filters and drop any pair left with no matching rows. pairKey keeps a pair's
-  // rows contiguous so the rowspan grouping merges its From→To cell. A
-  // synthetic `_isTotal` row is appended per pair (only when more than one
-  // platform is showing) — it carries the server-computed aggregates so the
-  // table reads as ios | android | totals.
-  const rows = useMemo(() => {
-    const out: Array<Record<string, unknown>> = []
-    for (const pair of pt.value) {
-      let platforms = (pair.platforms as Array<Record<string, unknown>>) || []
-      if (platformSel?.length) platforms = platforms.filter((p) => platformSel.includes(String(p.platform)))
-      if (statusSel?.length) platforms = platforms.filter((p) => statusSel.includes(String(p.status)))
-      platforms = platforms.slice().sort((a, b) => String(a.platform || '').localeCompare(String(b.platform || '')))
-      const pairKey = String(pair._id)
-      for (const pl of platforms) out.push({ ...pl, pairKey, _pair: pair })
-      if (platforms.length > 1) {
-        out.push({
-          pairKey,
-          _pair: pair,
-          _isTotal: true,
-          size: pair.totalSize,
-          compressionRatio: pair.avgRatio,
-          servedCount: pair.totalServed,
-          completedAt: pair.latestCreatedAt,
-        })
-      }
-    }
-    return out
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pt.value, JSON.stringify(platformSel), JSON.stringify(statusSel)])
+  // Pairs come straight through — one row per from-to pair. Per-platform
+  // breakdowns live INSIDE each cell via PlatformCell, so the table layout
+  // stays 1 row = 1 pair regardless of how many platforms a pair has.
+  const rows = pt.value
 
   return (
     <div style={{ width: '100%' }}>
@@ -484,14 +506,12 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
         paginatorTemplate="FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
         currentPageReportTemplate="{first}–{last} of {totalRecords} pairs"
         size="small"
-        rowGroupMode="rowspan"
-        groupRowsBy="pairKey"
         style={{ width: '100%', marginTop: 8 }}
         emptyMessage="No patches">
         <Column
           header="From → To"
-          field="pairKey"
-          filterField="fromUpdateId"
+          field="fromUpdateId"
+          sortable
           filter
           filterElement={(o) => (
             <InputText
@@ -501,19 +521,16 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
               style={{ width: 240, fontSize: 13 }}
             />
           )}
-          body={(r) => {
-            const pair = (r._pair as Record<string, unknown>) || {}
-            return (
-              <div
-                onClick={() => setSelectedPair(pair)}
-                title="Open patch details"
-                style={{ ...stackCell, cursor: 'pointer' }}>
-                <span style={linkText}>{String(pair.fromUpdateId || '—')}</span>
-                <span style={{ color: Colors.text }}>→</span>
-                <span style={linkText}>{String(pair.toUpdateId || '—')}</span>
-              </div>
-            )
-          }}
+          body={(pair: Record<string, unknown>) => (
+            <div
+              onClick={() => setSelectedPair(pair)}
+              title="Open patch details"
+              style={{ ...stackCell, cursor: 'pointer' }}>
+              <span style={linkText}>{String(pair.fromUpdateId || '—')}</span>
+              <span style={{ color: Colors.text }}>→</span>
+              <span style={linkText}>{String(pair.toUpdateId || '—')}</span>
+            </div>
+          )}
         />
         <Column
           header="Platform"
@@ -527,13 +544,19 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
               onChange={(v) => o.filterApplyCallback(v)}
             />
           )}
-          body={(r) =>
-            r._isTotal ? (
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>TOTAL</span>
-            ) : (
-              String(r.platform || '—')
-            )
-          }
+          body={(pair: Record<string, unknown>) => (
+            <PlatformCell
+              pair={pair}
+              showLabels={false}
+              render={(p, platform) =>
+                p ? (
+                  <span>{String(p.platform)}</span>
+                ) : (
+                  <span style={{ color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>{platform}</span>
+                )
+              }
+            />
+          )}
         />
         <Column
           header="Status"
@@ -547,33 +570,57 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
               onChange={(v) => o.filterApplyCallback(v)}
             />
           )}
-          body={(r) =>
-            r._isTotal ? null : (
-              <Pill value={(r.status as string) || '—'} color={PATCH_STATUS_COLORS[(r.status as string) || '']} />
-            )
-          }
+          body={(pair: Record<string, unknown>) => (
+            <PlatformCell
+              pair={pair}
+              showLabels={false}
+              render={(p) =>
+                p ? (
+                  <Pill value={(p.status as string) || '—'} color={PATCH_STATUS_COLORS[(p.status as string) || '']} />
+                ) : (
+                  <span style={{ color: 'rgba(255,255,255,0.4)', fontStyle: 'italic', fontSize: 11 }}>
+                    not generated
+                  </span>
+                )
+              }
+            />
+          )}
         />
         <Column
           header="Size"
           field="totalSize"
           sortable
-          body={(r) => <span style={{ fontWeight: r._isTotal ? 600 : 400 }}>{fmtBytes(r.size as number)}</span>}
+          body={(pair: Record<string, unknown>) => (
+            <PlatformCell
+              pair={pair}
+              render={(p) => (p?.size != null ? fmtBytes(p.size as number) : '—')}
+              total={fmtBytes((pair.totalSize as number) || 0)}
+            />
+          )}
         />
         <Column
           header="Ratio"
           field="avgRatio"
           sortable
-          body={(r) => (
-            <span style={{ fontWeight: r._isTotal ? 600 : 400 }}>
-              {r.compressionRatio ? `${((r.compressionRatio as number) * 100).toFixed(0)}%` : '—'}
-            </span>
+          body={(pair: Record<string, unknown>) => (
+            <PlatformCell
+              pair={pair}
+              render={(p) => (p?.compressionRatio ? `${((p.compressionRatio as number) * 100).toFixed(1)}%` : '—')}
+              total={pair.avgRatio ? `${((pair.avgRatio as number) * 100).toFixed(1)}%` : '—'}
+            />
           )}
         />
         <Column
           header="Served"
           field="totalServed"
           sortable
-          body={(r) => <span style={{ fontWeight: r._isTotal ? 600 : 400 }}>{String(r.servedCount || 0)}</span>}
+          body={(pair: Record<string, unknown>) => (
+            <PlatformCell
+              pair={pair}
+              render={(p) => String(p?.servedCount || 0)}
+              total={String(pair.totalServed || 0)}
+            />
+          )}
         />
         <Column
           header="Updated"
@@ -590,10 +637,18 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
               maxDate={createdMax}
             />
           )}
-          body={(r) => (
-            <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', fontWeight: r._isTotal ? 600 : 400 }}>
-              {fmtDate((r.completedAt || r.createdAt) as string)}
-            </span>
+          body={(pair: Record<string, unknown>) => (
+            <PlatformCell
+              pair={pair}
+              render={(p) => (
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {fmtDate((p?.completedAt || p?.createdAt) as string)}
+                </span>
+              )}
+              total={
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(pair.latestCreatedAt as string)}</span>
+              }
+            />
           )}
         />
       </DataTable>
