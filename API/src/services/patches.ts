@@ -248,7 +248,13 @@ class PatchesService extends MongoDBService {
       }
 
       if (action === 'reset' && existing) {
-        await this.patch(existing._id, { status: 'pending', nextAttemptAt: now, error: null, path: null })
+        await this.patch(
+          existing._id,
+          { status: 'pending', nextAttemptAt: now, error: null, path: null },
+          {
+            reason: `manual enqueue: retrying previously '${existing.status}' patch (bypasses cooldown)`,
+          } as unknown as Record<string, unknown>,
+        )
         enqueued.push({ platform, action: 'reset' })
         continue
       }

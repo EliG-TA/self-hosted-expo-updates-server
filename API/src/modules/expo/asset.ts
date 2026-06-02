@@ -195,23 +195,35 @@ const tryHandlePatch = async (app, { query, headers }, fallback) => {
     })
     const { cooldownMs } = await getBsdiffSettings(app)
     patches
-      .patch(decision.patchDoc._id, {
-        status: 'failed',
-        error: decision.reason,
-        nextAttemptAt: new Date(now.getTime() + cooldownMs),
-        path: null,
-      })
+      .patch(
+        decision.patchDoc._id,
+        {
+          status: 'failed',
+          error: decision.reason,
+          nextAttemptAt: new Date(now.getTime() + cooldownMs),
+          path: null,
+        },
+        {
+          reason: 'asset request: ready patch file missing on disk; marked failed for cooldown then regeneration',
+        },
+      )
       .catch((e) => logger.warn('asset.patch: failed to mark failed', { error: e.message }))
     return fallback
   }
 
   if (decision.decision === 'reset-then-fallback') {
     patches
-      .patch(decision.patchDoc._id, {
-        status: 'pending',
-        nextAttemptAt: now,
-        error: null,
-      })
+      .patch(
+        decision.patchDoc._id,
+        {
+          status: 'pending',
+          nextAttemptAt: now,
+          error: null,
+        },
+        {
+          reason: 'asset request: failed cooldown elapsed; queued for retry',
+        },
+      )
       .catch((e) => logger.warn('asset.patch: failed to reset to pending', { error: e.message }))
     return fallback
   }

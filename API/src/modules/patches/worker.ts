@@ -45,6 +45,10 @@ const claimNextPendingPatch = async (
   if (!collection || projectIds.length === 0) return null
   const now = new Date()
   const staleCutoff = new Date(now.getTime() - staleInProgressMs)
+  // returnDocument:'before' so we know the previous status (and previous
+  // lastAttemptAt for stale reclaim) when we audit the transition below.
+  // The hook chain isn't on this path (raw collection write for atomicity),
+  // so the patch-jobs row has to be written here explicitly.
   const res = await collection.findOneAndUpdate(
     {
       project: { $in: projectIds },
@@ -62,10 +66,54 @@ const claimNextPendingPatch = async (
     // Secondary _id sort makes claim order deterministic when a batch shares
     // createdAt (manual enqueue creates android+ios with the same timestamp;
     // android is inserted first so its ObjectId sorts earlier).
-    { sort: { createdAt: 1, _id: 1 }, returnDocument: 'after' },
+    { sort: { createdAt: 1, _id: 1 }, returnDocument: 'before' },
   )
   // mongodb v6 returns the updated document directly (no `.value` wrapper).
-  return (res as PatchWorkerRecord | null) || null
+  const before = (res as PatchWorkerRecord | null) || null
+  if (!before) return null
+
+  // Distinguish a fresh pickup (pending → generating: normal) from a stale
+  // reclaim (generating/validating → generating: previous run crashed or
+  // exceeded the heartbeat window). The reclaim case gets a descriptive
+  // `reason` so the patch detail history shows what happened.
+  const prevStatus = before.status
+  const wasInProgress = prevStatus === 'generating' || prevStatus === 'validating'
+  const lastTouched = before.lastAttemptAt ? new Date(before.lastAttemptAt as unknown as string) : null
+  const ageMin = lastTouched ? Math.round((now.getTime() - lastTouched.getTime()) / 60000) : 0
+  const reason = wasInProgress
+    ? `stale reclaim: previous worker run in '${prevStatus}' stalled (no heartbeat for ~${ageMin} min)`
+    : undefined
+
+  void app
+    .service('patch-jobs')
+    .create({
+      at: now,
+      patchId: before._id,
+      pairId: before.pairId,
+      project: before.project,
+      platform: before.platform,
+      fromUpdateId: before.fromUpdateId,
+      toUpdateId: before.toUpdateId,
+      event: 'status-changed',
+      status: 'generating',
+      previousStatus: prevStatus,
+      attempts: (before.attempts || 0) + 1,
+      reason,
+    })
+    .catch((e) =>
+      logger.warn('patches.worker: claim audit write failed', {
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    )
+
+  // Reconstruct the post-claim state for the caller (matches what the old
+  // returnDocument:'after' path produced).
+  return {
+    ...before,
+    status: 'generating',
+    lastAttemptAt: now,
+    attempts: (before.attempts || 0) + 1,
+  } as PatchWorkerRecord
 }
 
 const markFailed = async (app: AppLike, patch: PatchWorkerRecord, errorMessage: string, cooldownMs: number) => {
