@@ -26,7 +26,8 @@ const toInt = (v: unknown, fallback: number) => {
   const n = Math.floor(Number(v))
   return Number.isFinite(n) ? n : fallback
 }
-const asArray = (v: unknown) => (Array.isArray(v) ? v.filter((x) => x != null && x !== '') : v != null && v !== '' ? [v] : [])
+const asArray = (v: unknown) =>
+  Array.isArray(v) ? v.filter((x) => x != null && x !== '') : v != null && v !== '' ? [v] : []
 
 // Sort keys exposed to the table → aggregation field (whitelist).
 const SORT_FIELDS: Record<string, string> = {
@@ -118,6 +119,27 @@ class PatchPairsService extends MongoDBService {
     const postMatch: UnknownRecord = {}
     if (statusSel.length) postMatch['platforms.status'] = { $in: statusSel }
     if (platformSel.length) postMatch['platforms.platform'] = { $in: platformSel }
+
+    // Date-range filter on the synthetic `latestCreatedAt` (newest patch in
+    // the pair). Filters by pair, not individual platform — consistent with
+    // pagination being per-pair. From/to are inclusive; the client snaps to
+    // start-of-day / end-of-day before sending.
+    const dateRanges = (
+      query.dateRanges && typeof query.dateRanges === 'object' ? query.dateRanges : {}
+    ) as UnknownRecord
+    const createdRange = dateRanges.createdAt as { from?: unknown; to?: unknown } | undefined
+    if (createdRange && typeof createdRange === 'object') {
+      const cond: UnknownRecord = {}
+      if (typeof createdRange.from === 'string' && createdRange.from) {
+        const d = new Date(createdRange.from)
+        if (!isNaN(d.getTime())) cond.$gte = d
+      }
+      if (typeof createdRange.to === 'string' && createdRange.to) {
+        const d = new Date(createdRange.to)
+        if (!isNaN(d.getTime())) cond.$lte = d
+      }
+      if (Object.keys(cond).length) postMatch.latestCreatedAt = cond
+    }
 
     const pipeline: UnknownRecord[] = [
       { $match: preMatch },

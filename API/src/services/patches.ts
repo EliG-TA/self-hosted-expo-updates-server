@@ -150,7 +150,12 @@ class PatchesService extends MongoDBService {
       }
     }
     await this.app.service('patch-pairs').pruneEmpty?.()
-    this.app.service('messages').create({ action: 'update', keys: ['patches', 'patchesPage', 'patchPairsPage', 'patchJobs', 'patchJobsPage', 'diskUsage'] })
+    this.app
+      .service('messages')
+      .create({
+        action: 'update',
+        keys: ['patches', 'patchesPage', 'patchPairsPage', 'patchJobs', 'patchJobsPage', 'diskUsage'],
+      })
     return { removed, totalBytes, count: candidates.length, computedForDays, errors }
   }
 
@@ -270,7 +275,12 @@ class PatchesService extends MongoDBService {
       enqueued.push({ platform, action: 'create' })
     }
 
-    this.app.service('messages').create({ action: 'update', keys: ['patches', 'patchesPage', 'patchPairsPage', 'patchJobs', 'patchJobsPage', 'diskUsage'] })
+    this.app
+      .service('messages')
+      .create({
+        action: 'update',
+        keys: ['patches', 'patchesPage', 'patchPairsPage', 'patchJobs', 'patchJobsPage', 'diskUsage'],
+      })
     return { enqueued, skipped, platforms }
   }
 
@@ -292,7 +302,12 @@ class PatchesService extends MongoDBService {
       }
     }
     await this.app.service('patch-pairs').pruneEmpty?.()
-    this.app.service('messages').create({ action: 'update', keys: ['patches', 'patchesPage', 'patchPairsPage', 'patchJobs', 'patchJobsPage', 'diskUsage'] })
+    this.app
+      .service('messages')
+      .create({
+        action: 'update',
+        keys: ['patches', 'patchesPage', 'patchPairsPage', 'patchJobs', 'patchJobsPage', 'diskUsage'],
+      })
     return { removed }
   }
 
@@ -350,7 +365,12 @@ class PatchesService extends MongoDBService {
     }
 
     if (reclassified || requeued) {
-      this.app.service('messages').create({ action: 'update', keys: ['patches', 'patchesPage', 'patchPairsPage', 'patchJobs', 'patchJobsPage', 'diskUsage'] })
+      this.app
+        .service('messages')
+        .create({
+          action: 'update',
+          keys: ['patches', 'patchesPage', 'patchPairsPage', 'patchJobs', 'patchJobsPage', 'diskUsage'],
+        })
     }
     logger.info('patches.reconcile: benefit ratio applied', { newRatio, reclassified, requeued })
     return { reclassified, requeued }
@@ -390,6 +410,7 @@ class PatchesService extends MongoDBService {
       defaultSort: ['createdAt', -1],
       enumFilters: ['status', 'platform', 'source'],
       searchFields: ['fromUpdateId', 'toUpdateId'],
+      dateFilters: ['createdAt', 'completedAt'],
     })
     const [data, total] = await Promise.all([
       col.find(filter).sort(sort).skip(skip).limit(limit).toArray(),
@@ -415,7 +436,9 @@ const removePatchFileBeforeDelete = async (context: HookContextLike) => {
 }
 
 const broadcastChange = (context: HookContextLike) => {
-  context.app.service('messages').create({ action: 'update', keys: ['patches', 'patchesPage', 'patchPairsPage', 'diskUsage'] })
+  context.app
+    .service('messages')
+    .create({ action: 'update', keys: ['patches', 'patchesPage', 'patchPairsPage', 'diskUsage'] })
   return context
 }
 

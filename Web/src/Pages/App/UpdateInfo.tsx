@@ -271,9 +271,7 @@ const DirectionalTable = ({
         )}
         body={(row) => (
           <span
-            onClick={() =>
-              onOpenPair({ _id: row.pairId, fromUpdateId: row.fromUpdateId, toUpdateId: row.toUpdateId })
-            }
+            onClick={() => onOpenPair({ _id: row.pairId, fromUpdateId: row.fromUpdateId, toUpdateId: row.toUpdateId })}
             title="Open patch details"
             style={{
               cursor: 'pointer',

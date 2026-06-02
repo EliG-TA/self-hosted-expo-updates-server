@@ -1,11 +1,46 @@
 import { useEffect, useMemo, useState } from 'react'
 import moment from 'moment'
+import { FilterMatchMode, FilterService } from 'primereact/api'
 import { Column } from 'primereact/column'
 import { DataTable, type DataTableFilterMeta } from 'primereact/datatable'
-import { FilterMatchMode } from 'primereact/api'
 import { TabPanel, TabView } from 'primereact/tabview'
 
-import { Button, Card, Colors, ConfirmDialog, Flex, InlineMultiToggle, Spinner, StatusPill, Text } from '../../Components'
+// Register an inclusive-day date-range matcher once at module load.
+// `value` is the row's cell (ISO string from `createdAt`); `filter` is the
+// PrimeReact filter value, which our DateRangeFilter feeds as [Date, Date].
+// Mirrors the server-side semantics in useLazyTable: snap from→00:00 and
+// to→23:59:59.999 so day boundaries are inclusive on both ends.
+FilterService.register('dateRange', (value: unknown, filter: unknown) => {
+  if (!Array.isArray(filter)) return true
+  const [from, to] = filter as [Date | null, Date | null]
+  if (!from && !to) return true
+  if (!value) return false
+  const t = new Date(value as string).getTime()
+  if (from instanceof Date) {
+    const s = new Date(from)
+    s.setHours(0, 0, 0, 0)
+    if (t < s.getTime()) return false
+  }
+  if (to instanceof Date) {
+    const e = new Date(to)
+    e.setHours(23, 59, 59, 999)
+    if (t > e.getTime()) return false
+  }
+  return true
+})
+
+import {
+  Button,
+  Card,
+  Colors,
+  ConfirmDialog,
+  DateRangeFilter,
+  Flex,
+  InlineMultiToggle,
+  Spinner,
+  StatusPill,
+  Text,
+} from '../../Components'
 import { FC, invalidateQuery, useCQuery } from '../../Services'
 import type { AppRecord, IntegrityIssue, ListResult, ServiceOutcome, UnknownRecord, UploadRecord } from '../../types'
 import { listFromResult } from '../../types'
@@ -627,9 +662,7 @@ const OrphanFilesSection = ({ project }) => {
     setSelected((sel) => sel.filter((o) => next.size === 0 || next.has(o.type)))
   }
 
-  const presentTypes: string[] = result
-    ? Array.from(new Set((result.orphans || []).map((o: any) => o.type)))
-    : []
+  const presentTypes: string[] = result ? Array.from(new Set((result.orphans || []).map((o: any) => o.type))) : []
 
   const filteredOrphans = result
     ? (result.orphans as any[]).filter((o) => typeFilter.size === 0 || typeFilter.has(o.type))
@@ -914,6 +947,7 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
     releaseChannel: { value: null, matchMode: FilterMatchMode.IN },
     version: { value: null, matchMode: FilterMatchMode.IN },
     status: { value: null, matchMode: FilterMatchMode.IN },
+    createdAt: { value: null, matchMode: 'dateRange' },
   })
 
   // Channel/version values are project-scoped and unknown until we see the
@@ -934,6 +968,28 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
         .map((v) => ({ label: v, value: v })),
     [uploads],
   )
+
+  const hasActiveFilter = Object.values(uploadFilters).some((f) => {
+    const v = (f as { value?: unknown } | undefined)?.value
+    if (v == null) return false
+    if (Array.isArray(v)) return v.some((x) => x != null && x !== '')
+    if (typeof v === 'string') return v.trim() !== ''
+    return true
+  })
+
+  // Constrain the date-range picker to dates actually present in the table —
+  // user can't pick a range that would match nothing.
+  const [createdMin, createdMax] = useMemo(() => {
+    let lo = Infinity
+    let hi = -Infinity
+    for (const u of uploads) {
+      const t = u.createdAt ? new Date(u.createdAt).getTime() : NaN
+      if (!isFinite(t)) continue
+      if (t < lo) lo = t
+      if (t > hi) hi = t
+    }
+    return isFinite(lo) ? [new Date(lo), new Date(hi)] : [undefined, undefined]
+  }, [uploads])
 
   if (!isSuccess) return <Spinner />
 
@@ -960,7 +1016,7 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
             rows={10}
             filters={uploadFilters}
             onFilter={(e) => setUploadFilters(e.filters)}
-            emptyMessage="No app versions yet">
+            emptyMessage={hasActiveFilter ? 'No updates match the current filters' : 'No app versions yet'}>
             <Column
               field="updateId"
               header="Update ID"
@@ -989,6 +1045,16 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
               field="createdAt"
               header="Created"
               sortable
+              filter
+              showFilterMatchModes={false}
+              filterElement={(o) => (
+                <DateRangeFilter
+                  value={o.value}
+                  onChange={(v) => o.filterCallback(v)}
+                  minDate={createdMin}
+                  maxDate={createdMax}
+                />
+              )}
               body={({ createdAt }) => moment(createdAt).format('YYYY-MM-DD HH:mm:ss')}
             />
             <Column

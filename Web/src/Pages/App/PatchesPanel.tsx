@@ -5,7 +5,7 @@ import { DataTable } from 'primereact/datatable'
 import { Dialog } from 'primereact/dialog'
 import { InputText } from 'primereact/inputtext'
 
-import { Button, Colors, ConfirmDialog, Flex, InlineMultiToggle, Text } from '../../Components'
+import { Button, Colors, ConfirmDialog, DateRangeFilter, Flex, InlineMultiToggle, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery, useLazyTable } from '../../Services'
 import type { AppRecord, PatchJobRecord } from '../../types'
 import { UpdateLink } from './updateDetails'
@@ -164,7 +164,12 @@ export const PatchPairDetail = ({ pair, onClose }: { pair: Record<string, unknow
               <DetailRow label="Completed" value={fmtDate(p.completedAt as string)} />
               <DetailRow label="Source" value={String(p.source || 'auto')} />
               {!!p.error && (
-                <Text value={String(p.error)} size={11} color="#ff6b6b" style={{ marginTop: 6, wordBreak: 'break-word' }} />
+                <Text
+                  value={String(p.error)}
+                  size={11}
+                  color="#ff6b6b"
+                  style={{ marginTop: 6, wordBreak: 'break-word' }}
+                />
               )}
             </div>
           ))}
@@ -235,7 +240,7 @@ export const PatchPairDetail = ({ pair, onClose }: { pair: Record<string, unknow
 // All patches for the app: ONE ROW PER PLATFORM (ios/android separate), but the
 // first column (From → To) is merged across a pair's platform rows via
 // rowGroupMode="rowspan". The merged From→To cell is clickable → PatchPairDetail.
-// All filters live in column headers (filterDisplay="row"). Paginated by PAIR.
+// All filters live in column headers (filterDisplay="menu"). Paginated by PAIR.
 export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?: boolean }) => {
   const project = app?._id
   const pt = useLazyTable<Record<string, unknown>>(
@@ -248,12 +253,29 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
       rows: 25,
       enumFields: ['status', 'platform'],
       searchField: 'fromUpdateId',
+      dateFields: ['createdAt'],
     },
   )
   const [selectedPair, setSelectedPair] = useState<Record<string, unknown> | null>(null)
 
   const platformSel = (pt.filters.platform as { value?: unknown } | undefined)?.value as string[] | null
   const statusSel = (pt.filters.status as { value?: unknown } | undefined)?.value as string[] | null
+
+  // Bounds for the date-range picker. Server-paginated, so this only sees
+  // the currently loaded page — good enough as a soft hint, and the user
+  // can still pick any date manually if they're chasing older patches that
+  // haven't paged in yet.
+  const [createdMin, createdMax] = useMemo(() => {
+    let lo = Infinity
+    let hi = -Infinity
+    for (const pair of pt.value) {
+      const t = pair.latestCreatedAt ? new Date(pair.latestCreatedAt as string).getTime() : NaN
+      if (!isFinite(t)) continue
+      if (t < lo) lo = t
+      if (t > hi) hi = t
+    }
+    return isFinite(lo) ? [new Date(lo), new Date(hi)] : [undefined, undefined]
+  }, [pt.value])
 
   // Flatten the page of pairs into platform rows; trim by active platform/status
   // filters and drop any pair left with no matching rows. pairKey keeps a pair's
@@ -309,7 +331,10 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
           body={(r) => {
             const pair = (r._pair as Record<string, unknown>) || {}
             return (
-              <div onClick={() => setSelectedPair(pair)} title="Open patch details" style={{ ...stackCell, cursor: 'pointer' }}>
+              <div
+                onClick={() => setSelectedPair(pair)}
+                title="Open patch details"
+                style={{ ...stackCell, cursor: 'pointer' }}>
                 <span style={linkText}>{String(pair.fromUpdateId || '—')}</span>
                 <span style={{ color: Colors.text }}>→</span>
                 <span style={linkText}>{String(pair.toUpdateId || '—')}</span>
@@ -343,12 +368,31 @@ export const PatchesPanel = ({ app, enabled = true }: { app: AppRecord; enabled?
               onChange={(v) => o.filterApplyCallback(v)}
             />
           )}
-          body={(r) => <Pill value={(r.status as string) || '—'} color={PATCH_STATUS_COLORS[(r.status as string) || '']} />}
+          body={(r) => (
+            <Pill value={(r.status as string) || '—'} color={PATCH_STATUS_COLORS[(r.status as string) || '']} />
+          )}
         />
         <Column header="Size" body={(r) => fmtBytes(r.size as number)} />
-        <Column header="Ratio" body={(r) => (r.compressionRatio ? `${((r.compressionRatio as number) * 100).toFixed(0)}%` : '—')} />
+        <Column
+          header="Ratio"
+          body={(r) => (r.compressionRatio ? `${((r.compressionRatio as number) * 100).toFixed(0)}%` : '—')}
+        />
         <Column header="Served" body={(r) => String(r.servedCount || 0)} />
-        <Column header="Updated" body={(r) => fmtDate((r.completedAt || r.createdAt) as string)} />
+        <Column
+          header="Updated"
+          field="createdAt"
+          filter
+          showFilterMatchModes={false}
+          filterElement={(o) => (
+            <DateRangeFilter
+              value={o.value}
+              onChange={(v) => o.filterCallback(v)}
+              minDate={createdMin}
+              maxDate={createdMax}
+            />
+          )}
+          body={(r) => fmtDate((r.completedAt || r.createdAt) as string)}
+        />
       </DataTable>
 
       {selectedPair && <PatchPairDetail pair={selectedPair} onClose={() => setSelectedPair(null)} />}
