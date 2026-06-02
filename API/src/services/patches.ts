@@ -348,7 +348,15 @@ class PatchesService extends MongoDBService {
         // nextAttemptAt MUST be a Date (now), not null: the worker's claim uses
         // {nextAttemptAt: {$lte: now}} which doesn't match a null-valued field
         // (Mongo compares within BSON type), so a null here would never regenerate.
-        await this.patch(p._id, { status: 'pending', nextAttemptAt: new Date(), error: null, completedAt: null })
+        // `reason` is consumed by the logStatusChange hook so the patch-jobs
+        // audit row records WHY the status flipped (the patch document itself
+        // keeps `error: null` since this isn't a failure).
+        const reason = `benefit ratio lowered: previous ${((p.compressionRatio as number) * 100).toFixed(1)}% now under ${(newRatio * 100).toFixed(1)}% threshold`
+        await this.patch(
+          p._id,
+          { status: 'pending', nextAttemptAt: new Date(), error: null, completedAt: null },
+          { reason } as unknown as Record<string, unknown>,
+        )
         requeued++
       } catch (e) {
         logger.warn('patches.reconcile: requeue failed', {
@@ -508,6 +516,11 @@ const logStatusChange = async (context: HookContextLike) => {
   if (!doc?._id) return context
   const prev = (context.params as Record<string, unknown> | undefined)?._previousStatus as string | undefined
   if (doc.status === prev) return context // not a transition (other fields patched)
+  // Callers can attach a free-form `reason` to their .patch() call (see
+  // reconcileBenefitRatio) — captured here so the patch detail dialog's
+  // history shows context for transitions where `error` is intentionally
+  // cleared (e.g. not-beneficial → pending on a benefit-ratio change).
+  const reason = (context.params as Record<string, unknown> | undefined)?.reason as string | undefined
   await writeJob(context.app, {
     patchId: doc._id,
     pairId: doc.pairId,
@@ -520,6 +533,7 @@ const logStatusChange = async (context: HookContextLike) => {
     previousStatus: prev,
     attempts: doc.attempts,
     error: doc.error,
+    reason,
     durationMs: doc.durationMs,
     size: doc.size,
   })
