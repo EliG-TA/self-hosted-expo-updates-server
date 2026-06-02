@@ -54,7 +54,6 @@ const VersionTable = ({ project, version, updates, defaultCollapsed, onOpen }) =
         <Column
           field="updateId"
           header="Update ID"
-          sortable
           body={(row) => (
             <span
               onClick={(e) => {
@@ -74,11 +73,10 @@ const VersionTable = ({ project, version, updates, defaultCollapsed, onOpen }) =
             </span>
           )}
         />
-        <Column field="releaseChannel" header="Channel" sortable style={{ width: 130 }} />
+        <Column field="releaseChannel" header="Channel" style={{ width: 130 }} />
         <Column
           field="gitCommit"
           header="Commit"
-          sortable
           body={(row) => {
             const { hash, subject } = splitCommit(row.gitCommit)
             return (
@@ -104,7 +102,6 @@ const VersionTable = ({ project, version, updates, defaultCollapsed, onOpen }) =
         <Column
           field="releasedAt"
           header="Published"
-          sortable
           style={{ width: 180 }}
           body={({ releasedAt }) => (
             <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{formatDate(releasedAt)}</span>
