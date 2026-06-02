@@ -7,7 +7,7 @@ import { TabPanel, TabView } from 'primereact/tabview'
 
 import { Button, Card, Colors, ConfirmDialog, Flex, Spinner, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery } from '../../Services'
-import type { AppRecord, BsdiffSettings, ListResult, PatchJobRecord, PatchRecord, ServiceOutcome } from '../../types'
+import type { AppRecord, BsdiffSettings, ListResult, PatchRecord, ServiceOutcome } from '../../types'
 import { listFromResult } from '../../types'
 import { UpdateLink } from './updateDetails'
 
@@ -19,12 +19,6 @@ const fmtBytes = (n?: number) => {
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
-const fmtMs = (ms?: number) => {
-  if (!ms && ms !== 0) return '—'
-  if (ms < 1000) return `${ms} ms`
-  return `${(ms / 1000).toFixed(2)} s`
-}
-
 const fmtDate = (d?: string | Date) => (d ? moment(d).format('YYYY-MM-DD HH:mm:ss') : '—')
 
 const PATCH_STATUS_COLORS: Record<string, string> = {
@@ -34,19 +28,6 @@ const PATCH_STATUS_COLORS: Record<string, string> = {
   ready: '#4caf50',
   failed: '#ef5350',
   'not-beneficial': '#ffa94d',
-}
-
-const EVENT_COLORS: Record<string, string> = {
-  created: '#4dabf7',
-  'status-changed': '#9775fa',
-  removed: '#ff6b6b',
-}
-
-// "status-changed" is too wide for the Event pill — show a short label.
-const EVENT_LABELS: Record<string, string> = {
-  created: 'created',
-  'status-changed': 'changed',
-  removed: 'removed',
 }
 
 // Stack long content vertically across 3 lines (value / → / value) instead
@@ -120,19 +101,15 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
   const [cardOpen, setCardOpen] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
 
-  const { data: patches, isSuccess: patchesReady } = useCQuery<ListResult<PatchRecord>>(['patches', project], {
+  const { data: patches } = useCQuery<ListResult<PatchRecord>>(['patches', project], {
     enabled: cardOpen,
   })
-  const { data: jobs, isSuccess: jobsReady } = useCQuery<ListResult<PatchJobRecord>>(['patchJobs', project], {
-    enabled: cardOpen && activeTab === 1,
-  })
-
   // Global worker settings (one in-process worker → not per-app). Stored in ms;
   // shown in friendlier units and converted on save. Loaded only when the tab
   // is open. The server re-clamps every field, so the inputs' min/max are a
   // convenience, not the source of truth.
   const { data: settings } = useCQuery<BsdiffSettings>(['bsdiffSettings'], {
-    enabled: cardOpen && activeTab === 2,
+    enabled: cardOpen && activeTab === 1,
   })
   const [savingSettings, setSavingSettings] = useState(false)
   const [form, setForm] = useState<{
@@ -185,11 +162,6 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
     }, {})
     return { count: own.length, totalSize, totalServed, byStatus }
   }, [patches, project])
-
-  const projectJobs = useMemo(() => {
-    const list = listFromResult(jobs)
-    return list.filter((j) => !project || j.project === project || j.project == null)
-  }, [jobs, project])
 
   const handleToggle = async (value: boolean) => {
     setSaving(true)
@@ -476,70 +448,6 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
               />
             )}
           </Flex>
-        </TabPanel>
-
-        <TabPanel header="Job History">
-          {!jobsReady && <Spinner />}
-          {jobsReady && (
-            <DataTable
-              value={projectJobs}
-              size="small"
-              paginator
-              rows={15}
-              style={{ width: '100%', marginTop: 8 }}
-              emptyMessage="No history yet">
-              <Column field="at" header="When" body={(r: PatchJobRecord) => fmtDate(r.at)} />
-              <Column
-                field="event"
-                header="Event"
-                body={(r: PatchJobRecord) => (
-                  <Pill value={EVENT_LABELS[r.event || ''] || r.event} color={EVENT_COLORS[r.event || '']} />
-                )}
-              />
-              <Column
-                header="Status"
-                body={(r: PatchJobRecord) => {
-                  if (r.event === 'status-changed') {
-                    return (
-                      <div style={stackCell}>
-                        <Pill value={r.previousStatus || '—'} color={PATCH_STATUS_COLORS[r.previousStatus || '']} />
-                        <span style={{ color: Colors.text }}>→</span>
-                        <Pill value={r.status || '—'} color={PATCH_STATUS_COLORS[r.status || '']} />
-                      </div>
-                    )
-                  }
-                  if (r.event === 'removed') {
-                    return <Pill value={r.previousStatus || '—'} color={PATCH_STATUS_COLORS[r.previousStatus || '']} />
-                  }
-                  return <Pill value={r.status || '—'} color={PATCH_STATUS_COLORS[r.status || '']} />
-                }}
-              />
-              <Column field="platform" header="Platform" />
-              <Column
-                header="From → To"
-                body={(r: PatchJobRecord) => (
-                  <div style={stackCell}>
-                    <UpdateLink updateId={r.fromUpdateId} />
-                    <span style={{ color: Colors.text }}>→</span>
-                    <UpdateLink updateId={r.toUpdateId} />
-                  </div>
-                )}
-              />
-              <Column
-                field="attempts"
-                header="Attempts"
-                body={(r: PatchJobRecord) => (r.attempts != null ? String(r.attempts) : '—')}
-              />
-              <Column field="durationMs" header="Duration" body={(r: PatchJobRecord) => fmtMs(r.durationMs)} />
-              <Column field="size" header="Size" body={(r: PatchJobRecord) => fmtBytes(r.size)} />
-              <Column
-                header="Reason / Error"
-                body={(r: PatchJobRecord) => (
-                  <Text value={r.error || r.reason || ''} size={11} color={r.error ? '#ff6b6b' : Colors.text} />
-                )}
-              />
-            </DataTable>
-          )}
         </TabPanel>
 
         <TabPanel header="Worker settings">

@@ -11,6 +11,7 @@ import clients from './clients'
 import diskUsage from './disk-usage'
 import messages from './messages'
 import patchJobs from './patch-jobs'
+import patchPairs from './patch-pairs'
 import patches from './patches'
 import stats from './stats'
 import status from './status'
@@ -46,6 +47,7 @@ const services: ServiceModule[] = [
   diskUsage,
   messages,
   patchJobs,
+  patchPairs,
   patches,
   stats,
   status,

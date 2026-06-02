@@ -117,6 +117,24 @@ const queries: Record<string, AppQuery> = {
     queryFn: () => FC.service('bsdiff-settings').get('global'),
     noInitalPrefetch: true,
   },
+  // Server-side paginated/sorted/filtered lists. `params` (the 2nd key element)
+  // is an object {project, skip, limit, sortField, sortOrder, filters, search};
+  // react-query keys on it so changing page/sort/filter refetches.
+  patchJobsPage: {
+    config: queryConfig.frequent,
+    queryFn: (key, params) => FC.service('patch-jobs').get('page', { query: params || {} }),
+    noInitalPrefetch: true,
+  },
+  patchesPage: {
+    config: queryConfig.frequent,
+    queryFn: (key, params) => FC.service('patches').get('page', { query: params || {} }),
+    noInitalPrefetch: true,
+  },
+  patchPairsPage: {
+    config: queryConfig.frequent,
+    queryFn: (key, params) => FC.service('patch-pairs').get('page', { query: params || {} }),
+    noInitalPrefetch: true,
+  },
 }
 
 export const useCQuery = <T = DynamicData>(

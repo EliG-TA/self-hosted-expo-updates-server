@@ -8,6 +8,7 @@ import { Button, Card, Colors, ConfirmDialog, Flex, Spinner, StatusPill, Text } 
 import { FC, invalidateQuery, useCQuery } from '../../Services'
 import type { AppRecord, IntegrityIssue, ListResult, ServiceOutcome, UnknownRecord, UploadRecord } from '../../types'
 import { listFromResult } from '../../types'
+import { PatchesPanel } from './PatchesPanel'
 import { Release } from './Release'
 import { UpdateInstructions } from './UpdateInstructions'
 
@@ -580,15 +581,25 @@ const OldUpdatesCleanupSection = ({
   )
 }
 
+const ORPHAN_TYPE_LABELS: Record<string, string> = {
+  zip: 'Zip',
+  dir: 'Directory',
+}
+
 const OrphanFilesSection = ({ project }) => {
   const [scanning, setScanning] = useState(false)
   const [busyPath, setBusyPath] = useState(null)
   const [result, setResult] = useState(null)
   const [pendingDelete, setPendingDelete] = useState(null) // orphan being confirmed
+  const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set()) // empty = show all
+  const [selected, setSelected] = useState<any[]>([])
+  const [bulkConfirm, setBulkConfirm] = useState(false)
+  const [bulkRunning, setBulkRunning] = useState(false)
 
   const handleScan = async () => {
     setScanning(true)
     setResult(null)
+    setSelected([])
     try {
       const res = await FC.client.service('utils').update('scanOrphans', { project })
       setResult(res)
@@ -597,6 +608,24 @@ const OrphanFilesSection = ({ project }) => {
     }
     setScanning(false)
   }
+
+  const toggleType = (t: string) => {
+    const next = new Set(typeFilter)
+    if (next.has(t)) next.delete(t)
+    else next.add(t)
+    setTypeFilter(next)
+    // Drop selections that no longer match the active filter to avoid the
+    // "hidden but selected" footgun when the user fires Delete selected.
+    setSelected((sel) => sel.filter((o) => next.size === 0 || next.has(o.type)))
+  }
+
+  const presentTypes: string[] = result
+    ? Array.from(new Set((result.orphans || []).map((o: any) => o.type)))
+    : []
+
+  const filteredOrphans = result
+    ? (result.orphans as any[]).filter((o) => typeFilter.size === 0 || typeFilter.has(o.type))
+    : []
 
   const runDelete = async () => {
     const orphan = pendingDelete
@@ -613,6 +642,43 @@ const OrphanFilesSection = ({ project }) => {
     }
     setBusyPath(null)
   }
+
+  const runBulkDelete = async () => {
+    if (!selected.length) return
+    setBulkRunning(true)
+    let ok = 0
+    const failures: Array<{ path: string; error: string }> = []
+    for (const o of selected) {
+      try {
+        await FC.client.service('utils').update('deleteOrphan', { path: o.path, type: o.type })
+        ok++
+      } catch (e) {
+        failures.push({ path: o.path, error: (e as Error).message })
+      }
+    }
+    if (failures.length === 0) {
+      window.toast?.show({ severity: 'info', summary: 'Deleted', detail: `${ok} orphan file(s) removed` })
+    } else if (ok === 0) {
+      window.toast?.show({
+        severity: 'error',
+        summary: 'Bulk delete failed',
+        detail: `${failures.length} failed. First error: ${failures[0].error}`,
+      })
+    } else {
+      window.toast?.show({
+        severity: 'warn',
+        summary: 'Bulk delete partial',
+        detail: `${ok} deleted, ${failures.length} failed. First error: ${failures[0].error}`,
+      })
+    }
+    setBulkConfirm(false)
+    setBulkRunning(false)
+    setSelected([])
+    invalidateQuery(['diskUsage'])
+    await handleScan()
+  }
+
+  const selectedTotalBytes = selected.reduce((acc, o) => acc + (o.sizeBytes || 0), 0)
 
   return (
     <div style={{ width: '100%' }}>
@@ -661,14 +727,65 @@ const OrphanFilesSection = ({ project }) => {
 
         {result && result.orphanCount > 0 && (
           <div style={{ width: '100%', marginTop: 16 }}>
+            <Flex row style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+              <Text value="Type:" size={11} color="rgba(255,255,255,0.5)" style={{ marginRight: 2 }} />
+              {presentTypes.sort().map((t) => {
+                const count = (result.orphans as any[]).filter((o) => o.type === t).length
+                return (
+                  <FilterChip
+                    key={t}
+                    label={`${ORPHAN_TYPE_LABELS[t] || t} (${count})`}
+                    active={typeFilter.has(t)}
+                    color={Colors.primary}
+                    onClick={() => toggleType(t)}
+                  />
+                )
+              })}
+              {typeFilter.size > 0 && (
+                <FilterChip
+                  label="clear all"
+                  active={false}
+                  color="rgba(255,255,255,0.2)"
+                  onClick={() => {
+                    setTypeFilter(new Set())
+                  }}
+                />
+              )}
+              <span style={{ flex: 1 }} />
+              {selected.length > 0 && (
+                <>
+                  <Text
+                    value={`${selected.length} selected · ${fmtBytes(selectedTotalBytes)}`}
+                    size={11}
+                    color="rgba(255,255,255,0.7)"
+                  />
+                  <Button
+                    icon="trash"
+                    label={`Delete selected (${selected.length})`}
+                    danger
+                    onClick={() => setBulkConfirm(true)}
+                    style={{ padding: '2px 10px', fontSize: 11 }}
+                  />
+                </>
+              )}
+              <Text
+                value={`${filteredOrphans.length} / ${result.orphanCount} rows`}
+                size={11}
+                color="rgba(255,255,255,0.5)"
+              />
+            </Flex>
             <DataTable
-              value={result.orphans}
+              value={filteredOrphans}
               size="small"
-              paginator={result.orphans.length > 10}
+              paginator={filteredOrphans.length > 10}
               rows={10}
               sortField="sizeBytes"
               sortOrder={-1}
+              selection={selected}
+              onSelectionChange={(e) => setSelected(e.value)}
+              dataKey="path"
               style={{ width: '100%' }}>
+              <Column selectionMode="multiple" headerStyle={{ width: '3rem' }} />
               <Column field="type" header="Type" sortable filter style={{ width: 80 }} />
               <Column
                 field="path"
@@ -759,6 +876,20 @@ const OrphanFilesSection = ({ project }) => {
           </>
         )}
       </ConfirmDialog>
+
+      <ConfirmDialog
+        visible={bulkConfirm}
+        title="Delete Orphan Files"
+        confirmIcon="trash"
+        confirmLabel={`Delete ${selected.length}`}
+        confirmDanger
+        onConfirm={runBulkDelete}
+        onCancel={() => (bulkRunning ? null : setBulkConfirm(false))}
+        loading={bulkRunning}>
+        <Text value={`You are about to delete ${selected.length} orphan file(s).`} />
+        <Text value={`Total size: ${fmtBytes(selectedTotalBytes)}`} style={{ marginTop: 8 }} />
+        <Text value="This cannot be undone. Are you sure?" style={{ marginTop: 20 }} />
+      </ConfirmDialog>
     </div>
   )
 }
@@ -768,6 +899,7 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
   const uploads = listFromResult(uploadsResult)
   const [update, setUpdate] = useState<UploadRecord | null>(null)
   const [releasing, setRelasing] = useState(false)
+  const [activeTab, setActiveTab] = useState(0)
 
   if (!isSuccess) return <Spinner />
 
@@ -781,7 +913,11 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
 
   return (
     <Card {...cardProps}>
-      <TabView style={{ width: '100%', marginTop: 10 }} renderActiveOnly={false}>
+      <TabView
+        style={{ width: '100%', marginTop: 10 }}
+        renderActiveOnly={false}
+        activeIndex={activeTab}
+        onTabChange={(e) => setActiveTab(e.index)}>
         <TabPanel header="All Updates">
           <DataTable
             style={{ marginTop: 10, width: '100%' }}
@@ -829,6 +965,9 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
               body={({ status }) => <StatusPill status={status} />}
             />
           </DataTable>
+        </TabPanel>
+        <TabPanel header="Patches">
+          <PatchesPanel app={app} enabled={activeTab === 1} />
         </TabPanel>
         <TabPanel header="Old Updates Cleanup">
           <OldUpdatesCleanupSection project={app._id} onOpenUpload={setUpdate} />

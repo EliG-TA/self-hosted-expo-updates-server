@@ -27,13 +27,27 @@ interface PatchWorkerRecord extends PatchRecord {
   toUpdateId: string
 }
 
-const claimNextPendingPatch = async (app: AppLike, staleInProgressMs: number): Promise<PatchWorkerRecord | null> => {
+// Project ids of apps with bsdiff currently enabled. The worker only generates
+// for these, so toggling "Enable bsdiff patches" OFF immediately stops new
+// generation for that app (its pending patches just wait until re-enabled).
+const enabledProjectIds = async (app: AppLike): Promise<string[]> => {
+  const res = await app.service('apps').find({ query: { bsdiffEnabled: true, $limit: 1000 } })
+  const list = Array.isArray(res) ? res : (res as { data?: unknown[] })?.data || []
+  return (list as Array<{ _id?: unknown }>).map((a) => String(a._id)).filter(Boolean)
+}
+
+const claimNextPendingPatch = async (
+  app: AppLike,
+  staleInProgressMs: number,
+  projectIds: string[],
+): Promise<PatchWorkerRecord | null> => {
   const collection = app.service('patches').Model
-  if (!collection) return null
+  if (!collection || projectIds.length === 0) return null
   const now = new Date()
   const staleCutoff = new Date(now.getTime() - staleInProgressMs)
   const res = await collection.findOneAndUpdate(
     {
+      project: { $in: projectIds },
       $or: [
         // Fresh queue item whose cooldown (if any) has elapsed.
         { status: 'pending', $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now } }] },
@@ -180,9 +194,15 @@ const processOnePatch = async (app: AppLike, patchDoc: PatchWorkerRecord, settin
 const loop = async (app: AppLike) => {
   if (stopped) return
   const settings = await getBsdiffSettings(app)
+  let projectIds: string[] = []
   try {
-    while (activeCount < settings.concurrency) {
-      const patchDoc = await claimNextPendingPatch(app, settings.staleInProgressMs)
+    projectIds = await enabledProjectIds(app)
+  } catch (e) {
+    logger.warn('patches.worker: failed to load enabled apps', { error: e instanceof Error ? e.message : String(e) })
+  }
+  try {
+    while (activeCount < settings.concurrency && projectIds.length) {
+      const patchDoc = await claimNextPendingPatch(app, settings.staleInProgressMs, projectIds)
       if (!patchDoc) break
       activeCount++
       void processOnePatch(app, patchDoc, settings)

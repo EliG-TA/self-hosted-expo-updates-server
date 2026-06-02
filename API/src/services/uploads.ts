@@ -25,6 +25,10 @@ const cascadeRemovePatches = async (context: HookContextLike) => {
         /* already gone */
       }
     }
+    // Drop any from→to pairs left with no patches after the cascade.
+    if (docs.length) {
+      await context.app.service('patch-pairs').pruneEmpty?.()
+    }
   } catch (e) {
     logger.warn('uploads.cascadeRemovePatches: failed', {
       id: context.id,

@@ -3,12 +3,15 @@ import type { CSSProperties, ReactNode } from 'react'
 import moment from 'moment'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
+import { InputText } from 'primereact/inputtext'
+import { MultiSelect } from 'primereact/multiselect'
 import { TabPanel, TabView } from 'primereact/tabview'
 
-import { Button, Colors, ConfirmDialog, Flex, Input, Spinner, Text } from '../../Components'
-import { FC, invalidateQuery, useCQuery } from '../../Services'
+import { Button, Colors, Flex, Input, Spinner, Text } from '../../Components'
+import { FC, invalidateQuery, useCQuery, useLazyTable } from '../../Services'
 import type { ListResult, PatchRecord, UnknownRecord, UploadRecord } from '../../types'
 import { listFromResult } from '../../types'
+import { PatchPairDetail } from './PatchesPanel'
 import { UpdateLink } from './updateDetails'
 
 interface UpdateSizes extends UnknownRecord {
@@ -206,42 +209,121 @@ type PatchSource = {
 }
 type PatchSourcesResult = { target?: { platforms?: string[] }; sources: PatchSource[] }
 
-// One direction of a patch list, grouped by the counterpart update.
-//   groupField 'fromUpdateId' → incoming (other → this), header shows From
-//   groupField 'toUpdateId'   → outgoing (this → other), header shows To
-const DirectionalPatches = ({
-  rows,
-  groupField,
-  onDelete,
+// One direction of this update's patches as a flat, server-paginated table with
+// all filters in the column headers. `counterpartField` is the OTHER end's
+// updateId (the fixed end is scoped server-side via base toUploadId/fromUploadId):
+//   'fromUpdateId' → incoming (other → this)   'toUpdateId' → outgoing (this → other)
+const DirectionalTable = ({
+  base,
+  counterpartField,
+  label,
+  onOpenPair,
 }: {
-  rows: PatchRecord[]
-  groupField: 'fromUpdateId' | 'toUpdateId'
-  onDelete: (patch: PatchRecord) => void
+  base: Record<string, unknown>
+  counterpartField: 'fromUpdateId' | 'toUpdateId'
+  label: string
+  onOpenPair: (pair: Record<string, unknown>) => void
 }) => {
-  if (!rows.length) return <Text value="None." size={12} color="rgba(255,255,255,0.5)" />
-  const sorted = [...rows].sort((a, b) => {
-    const g = String(a[groupField] || '').localeCompare(String(b[groupField] || ''))
-    return g !== 0 ? g : String(a.platform || '').localeCompare(String(b.platform || ''))
+  const t = useLazyTable<Record<string, unknown>>('patchesPage', base, {
+    defaultSortField: counterpartField,
+    defaultSortOrder: 1,
+    rows: 25,
+    enumFields: ['status', 'platform'],
+    searchField: counterpartField,
   })
-  const headerLabel = groupField === 'fromUpdateId' ? 'From' : 'To'
   return (
     <DataTable
-      value={sorted}
+      value={t.value}
+      lazy
+      paginator
+      first={t.first}
+      rows={t.rows}
+      totalRecords={t.totalRecords}
+      onPage={t.onPage}
+      onSort={t.onSort}
+      sortField={t.sortField}
+      sortOrder={t.sortOrder}
+      filterDisplay="row"
+      filters={t.filters}
+      onFilter={t.onFilter}
+      loading={t.loading}
+      paginatorTemplate="FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
+      currentPageReportTemplate="{first}–{last} of {totalRecords}"
       size="small"
+      rowGroupMode="rowspan"
+      groupRowsBy={counterpartField}
       style={{ width: '100%' }}
-      rowGroupMode="subheader"
-      groupRowsBy={groupField}
-      sortField={groupField}
-      sortOrder={1}
-      rowGroupHeaderTemplate={(row) => (
-        <span style={{ fontSize: 12 }}>
-          <span style={{ color: 'rgba(255,255,255,0.5)', marginRight: 6 }}>{headerLabel}:</span>
-          <UpdateLink updateId={row[groupField] as string} />
-        </span>
-      )}>
-      <Column field="platform" header="Platform" />
-      <Column field="createdAt" header="Date" body={(row) => formatDate(row.createdAt)} />
-      <Column field="status" header="Status" body={(row) => <StatusBadge status={row.status} />} />
+      emptyMessage="None.">
+      <Column
+        header={label}
+        field={counterpartField}
+        sortable
+        filter
+        showFilterMenu={false}
+        filterElement={(o) => (
+          <InputText
+            className="p-inputtext-sm"
+            value={(o.value as string) || ''}
+            onChange={(e) => o.filterApplyCallback(e.target.value)}
+            placeholder="updateId…"
+            style={{ width: 130 }}
+          />
+        )}
+        body={(row) => (
+          <span
+            onClick={() =>
+              onOpenPair({ _id: row.pairId, fromUpdateId: row.fromUpdateId, toUpdateId: row.toUpdateId })
+            }
+            title="Open patch details"
+            style={{
+              cursor: 'pointer',
+              fontFamily: 'ui-monospace, Menlo, monospace',
+              fontSize: 12,
+              wordBreak: 'break-all',
+              color: Colors.primary,
+              textDecoration: 'underline dotted',
+            }}>
+            {String(row[counterpartField] || '—')}
+          </span>
+        )}
+      />
+      <Column
+        header="Platform"
+        field="platform"
+        filter
+        showFilterMenu={false}
+        filterElement={(o) => (
+          <MultiSelect
+            className="p-inputtext-sm"
+            value={o.value}
+            options={PATCH_PLATFORM_OPTIONS}
+            onChange={(e) => o.filterApplyCallback(e.value)}
+            placeholder="Platform"
+            maxSelectedLabels={1}
+            style={{ width: 110, fontSize: 12 }}
+          />
+        )}
+        body={(row) => String(row.platform || '—')}
+      />
+      <Column
+        header="Status"
+        field="status"
+        filter
+        showFilterMenu={false}
+        filterElement={(o) => (
+          <MultiSelect
+            className="p-inputtext-sm"
+            value={o.value}
+            options={PATCH_STATUS_OPTIONS}
+            onChange={(e) => o.filterApplyCallback(e.value)}
+            placeholder="Status"
+            maxSelectedLabels={1}
+            style={{ width: 130, fontSize: 12 }}
+          />
+        )}
+        body={(row) => <StatusBadge status={row.status} />}
+      />
+      <Column field="completedAt" header="Updated" body={(row) => formatDate(row.completedAt || row.createdAt)} />
       <Column field="size" header="Size" body={(row) => getSize(row.size || 0)} />
       <Column
         field="compressionRatio"
@@ -249,10 +331,6 @@ const DirectionalPatches = ({
         body={(row) => (row.compressionRatio ? `${(row.compressionRatio * 100).toFixed(0)}%` : '—')}
       />
       <Column field="servedCount" header="Served" body={(row) => row.servedCount || 0} />
-      <Column
-        header=""
-        body={(row) => <Button icon="trash" danger onClick={() => onDelete(row)} style={{ padding: 4 }} />}
-      />
     </DataTable>
   )
 }
@@ -407,66 +485,42 @@ const CreatePatchTable = ({ uploadId, project }: { uploadId: string; project?: s
   )
 }
 
-const PatchesTab = ({ uploadId, project }: { uploadId: string; project?: string }) => {
-  const { data: patches, isSuccess } = useCQuery<ListResult<PatchRecord>>(['patches', project])
-  const [pendingDelete, setPendingDelete] = useState<PatchRecord | null>(null)
-  const [deleting, setDeleting] = useState(false)
-  if (!isSuccess) return <Spinner />
-  const all = listFromResult(patches)
-  const incoming = all.filter((p) => p.toUploadId === uploadId) // other → this
-  const outgoing = all.filter((p) => p.fromUploadId === uploadId) // this → other
+const PATCH_STATUS_OPTIONS = ['pending', 'generating', 'validating', 'ready', 'failed', 'not-beneficial'].map((s) => ({
+  label: s,
+  value: s,
+}))
+const PATCH_PLATFORM_OPTIONS = ['ios', 'android'].map((s) => ({ label: s, value: s }))
 
-  const confirmDelete = async () => {
-    if (!pendingDelete?._id) return
-    setDeleting(true)
-    try {
-      await FC.client.service('patches').remove(pendingDelete._id)
-      invalidateQuery(['patches', 'diskUsage'])
-    } catch (e) {
-      window.toast.show({ severity: 'error', summary: 'Error', detail: e.message })
-    }
-    setDeleting(false)
-    setPendingDelete(null)
-  }
+const PatchesTab = ({ uploadId, project }: { uploadId: string; project?: string }) => {
+  // Clicking a counterpart opens the pair detail window, which is where patches
+  // are deleted (the tables themselves have no delete button).
+  const [selectedPair, setSelectedPair] = useState<Record<string, unknown> | null>(null)
 
   return (
     <div style={{ width: '100%', display: 'block', boxSizing: 'border-box' }}>
       <Section title="Incoming patches  ·  other → this" style={{ marginTop: 0 }} collapsible>
-        <DirectionalPatches rows={incoming} groupField="fromUpdateId" onDelete={setPendingDelete} />
+        <DirectionalTable
+          base={{ project, toUploadId: uploadId }}
+          counterpartField="fromUpdateId"
+          label="From"
+          onOpenPair={setSelectedPair}
+        />
       </Section>
 
       <Section title="Outgoing patches  ·  this → other" collapsible>
-        <DirectionalPatches rows={outgoing} groupField="toUpdateId" onDelete={setPendingDelete} />
+        <DirectionalTable
+          base={{ project, fromUploadId: uploadId }}
+          counterpartField="toUpdateId"
+          label="To"
+          onOpenPair={setSelectedPair}
+        />
       </Section>
 
       <Section title="Create patches  ·  base → this" collapsible defaultCollapsed>
         <CreatePatchTable uploadId={uploadId} project={project} />
       </Section>
 
-      <ConfirmDialog
-        visible={!!pendingDelete}
-        title="Delete patch"
-        confirmIcon="trash"
-        confirmLabel="Delete"
-        confirmDanger
-        onConfirm={confirmDelete}
-        onCancel={() => setPendingDelete(null)}
-        loading={deleting}>
-        {pendingDelete && (
-          <>
-            <Text value={`Delete the ${pendingDelete.platform} patch:`} />
-            <div style={{ ...styles.mono, fontSize: 12, marginTop: 12 }}>
-              {String(pendingDelete.fromUpdateId || '—')}
-              <div style={{ color: Colors.text }}>→</div>
-              {String(pendingDelete.toUpdateId || '—')}
-            </div>
-            <Text
-              value="Removes the patch file and DB record. It will be regenerated on demand if still needed."
-              style={{ marginTop: 16 }}
-            />
-          </>
-        )}
-      </ConfirmDialog>
+      {selectedPair && <PatchPairDetail pair={selectedPair} onClose={() => setSelectedPair(null)} />}
     </div>
   )
 }
