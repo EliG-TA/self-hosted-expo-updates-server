@@ -5,3 +5,76 @@
 .p-inputtext {
   background-color: rgb(20, 26, 37) !important;
 }
+
+/* UpdateInfo card: keep the status strip + tab nav pinned at the top of
+   the scrolling Dialog body so users always see what they're looking at
+   and can switch tabs without scrolling back up.
+   The two sticky bands share one continuous background and butt up against
+   each other (header height == tab-nav `top`) to avoid any visible gap. */
+.update-info-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-overlay, #1e1e1e);
+  height: 44px;
+  box-sizing: border-box;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  margin: 0 !important;
+  overflow: hidden;
+}
+.update-info-tabview {
+  margin-top: 0 !important;
+}
+.update-info-tabview .p-tabview-nav-container {
+  position: sticky;
+  top: 44px;
+  z-index: 2;
+  background: var(--surface-overlay, #1e1e1e);
+}
+.update-info-tabview .p-tabview-nav {
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Subtle "fetching in background" indicator for app headers */
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Compact variant for DateRangeFilter (inline calendar inside a column-
+   header filter popover). PrimeReact's Calendar is sized for top-level
+   page use; in a filter popover we shrink the header, nav arrows, and
+   day cells so the popover doesn't grow taller than the viewport. */
+.date-range-filter-inline .p-datepicker-inline {
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  background: transparent;
+}
+.date-range-filter-inline .p-datepicker-header {
+  padding: 4px 6px;
+  background: transparent;
+}
+.date-range-filter-inline .p-datepicker-title {
+  font-size: 12px;
+}
+.date-range-filter-inline .p-datepicker-prev,
+.date-range-filter-inline .p-datepicker-next {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+.date-range-filter-inline table {
+  font-size: 11px;
+  margin: 0;
+}
+.date-range-filter-inline table th,
+.date-range-filter-inline table td {
+  padding: 0;
+}
+.date-range-filter-inline table td > span {
+  width: 1.75rem;
+  height: 1.75rem;
+}

@@ -1,8 +1,6 @@
-version: '3.7'
-
 # See detailed comments in the production docker-compose
 # This configuration should work fine for local development, restart the API container once the DB is online in order to create the admin user automatically.
-services: 
+services:
   api:
     build:
       context: ../../API
@@ -15,7 +13,7 @@ services:
       - ../../API:/server
       - ./updates:/updates
       - ./uploads:/uploads
-      - yarn_cache_updater_api:/yarn
+      - bun_cache_updater_api:/bun-cache
       - node_modules_updater_api:/server/node_modules
     ports:
       - 3000:3000
@@ -29,7 +27,11 @@ services:
       - NODE_ENV=development
       - PUBLIC_URL=http://10.0.0.30:3000
       - DASBHOARD_THROTTLE_MSEC=5000
-    command: npx nodemon --inspect=0.0.0.0 src/index.js
+      # Docker Desktop's virtio-fs reports nonsense for bind-mounted paths,
+      # so the disk-usage chip would show garbage totals. Point statfs at
+      # the VM overlay root for meaningful numbers in dev. On prod Linux
+      # remove this (or set it to /updates where /updates is a real volume).
+      - DISK_STAT_PATH=/
 
   web:
     build:
@@ -41,7 +43,7 @@ services:
       - db
     volumes:
       - ../../Web:/app
-      - yarn_cache_updater_web:/yarn
+      - bun_cache_updater_web:/bun-cache
       - node_modules_updater_web:/app/node_modules
     ports:
       - 4000:4000
@@ -62,8 +64,8 @@ services:
 
 
 volumes:
-  yarn_cache_updater_api:
-  yarn_cache_updater_web:
+  bun_cache_updater_api:
+  bun_cache_updater_web:
   node_modules_updater_api:
   node_modules_updater_web:
   updater_db_data:

@@ -1,0 +1,95 @@
+import { ObjectId } from 'mongodb'
+
+import type { UnknownRecord } from '../../types'
+
+// ObjectId-valued reference fields (pairId, patchId, *UploadId) arrive from the
+// client as plain strings, but raw-collection queries don't coerce non-_id
+// fields like the feathers adapter does. Match both representations.
+export const idMatch = (v: unknown) =>
+  typeof v === 'string' && ObjectId.isValid(v) ? { $in: [v, new ObjectId(v)] } : v
+
+// Turns untrusted client list params into a safe Mongo query. Field names for
+// sort and filters are matched against per-call whitelists (never taken raw
+// from the client), and the free-text search is regex-escaped — so this can't
+// be used for query injection or to sort/scan on an unindexed field.
+
+export interface ListQueryInput {
+  skip?: unknown
+  limit?: unknown
+  sortField?: unknown
+  sortOrder?: unknown // 1 = asc, -1 = desc (PrimeReact convention)
+  filters?: UnknownRecord // field -> value | value[]  (enum multi-select → $in)
+  search?: unknown // free text matched against searchFields
+  dateRanges?: UnknownRecord // field -> { from?: ISO, to?: ISO } → $gte/$lte
+}
+
+export interface ListQueryConfig {
+  base?: UnknownRecord // always-applied scalar constraints (e.g. project)
+  sortable: string[]
+  defaultSort: [string, 1 | -1]
+  enumFilters: string[]
+  searchFields: string[]
+  dateFilters?: string[] // whitelist of date-range filterable fields
+  maxLimit?: number
+}
+
+export interface BuiltListQuery {
+  filter: UnknownRecord
+  sort: Record<string, 1 | -1>
+  skip: number
+  limit: number
+}
+
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const toInt = (value: unknown, fallback: number) => {
+  const n = Math.floor(Number(value))
+  return Number.isFinite(n) ? n : fallback
+}
+
+export const buildListQuery = (input: ListQueryInput, cfg: ListQueryConfig): BuiltListQuery => {
+  const maxLimit = cfg.maxLimit ?? 100
+  const limit = Math.min(maxLimit, Math.max(1, toInt(input.limit, 25)))
+  const skip = Math.max(0, toInt(input.skip, 0))
+
+  const sortField =
+    typeof input.sortField === 'string' && cfg.sortable.includes(input.sortField) ? input.sortField : cfg.defaultSort[0]
+  const sortOrder = toInt(input.sortOrder, cfg.defaultSort[1]) >= 0 ? 1 : -1
+  const sort: Record<string, 1 | -1> = { [sortField]: sortOrder }
+
+  const filter: UnknownRecord = { ...(cfg.base || {}) }
+
+  const rawFilters = (input.filters && typeof input.filters === 'object' ? input.filters : {}) as UnknownRecord
+  for (const field of cfg.enumFilters) {
+    const v = rawFilters[field]
+    const values = Array.isArray(v) ? v.filter((x) => x != null && x !== '') : v != null && v !== '' ? [v] : []
+    if (values.length) filter[field] = { $in: values }
+  }
+
+  if (typeof input.search === 'string' && input.search.trim() && cfg.searchFields.length) {
+    const rx = { $regex: escapeRegex(input.search.trim()), $options: 'i' }
+    filter.$or = cfg.searchFields.map((f) => ({ [f]: rx }))
+  }
+
+  // Date-range filters. Both `from` and `to` are inclusive on the client
+  // side; here we trust whatever the client already snapped to (start-of-
+  // day / end-of-day). We only validate that the values parse to a real
+  // Date — anything else is dropped silently.
+  const rawRanges = (input.dateRanges && typeof input.dateRanges === 'object' ? input.dateRanges : {}) as UnknownRecord
+  for (const field of cfg.dateFilters || []) {
+    const r = rawRanges[field] as { from?: unknown; to?: unknown } | undefined
+    if (!r || typeof r !== 'object') continue
+    const cond: UnknownRecord = {}
+    if (typeof r.from === 'string' && r.from) {
+      const d = new Date(r.from)
+      if (!isNaN(d.getTime())) cond.$gte = d
+    }
+    if (typeof r.to === 'string' && r.to) {
+      const d = new Date(r.to)
+      if (!isNaN(d.getTime())) cond.$lte = d
+    }
+    if (Object.keys(cond).length) filter[field] = cond
+  }
+
+  return { filter, sort, skip, limit }
+}

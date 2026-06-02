@@ -6,35 +6,23 @@
   "homepage": "https://github.com/umbertoghio/self-hosted-expo-updates-server",
   "license": "MIT",
   "scripts": {
-    "---Dev API & Web---": "",
     "dev:run": "cd Docker/development; docker-compose up --build",
-    "dev:stop": "cd Docker/development; docker-compose down"
+    "dev:stop": "cd Docker/development; docker-compose down",
+    "lint": "eslint API Web",
+    "lint:fix": "eslint API Web --fix",
+    "format": "prettier --ignore-path .prettierignore --write .",
+    "format:check": "prettier --ignore-path .prettierignore --check ."
   },
   "devDependencies": {
-    "@babel/core": "~7.9.0",
-    "babel-eslint": "^10.1.0",
-    "babel-preset-expo": "^8.5.1",
-    "eslint": "^7.11.0",
-    "eslint-plugin-html": "^6.2.0",
-    "nodemon": "^2.0.14",
-    "standard": "^16.0.4",
-    "typescript": "^4.4.4"
-  },
-  "standard": {
-    "parser": "babel-eslint",
-    "version": "15.0",
-    "globals": [
-      "describe",
-      "test",
-      "jest",
-      "expect",
-      "fetch",
-      "navigator",
-      "__DEV__",
-      "__static",
-      "XMLHttpRequest",
-      "FormData",
-      "React$Element"
-    ]
+    "@eslint/js": "^9",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-simple-import-sort": "^13.0.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3",
+    "typescript-eslint": "^8.60.0"
   }
 }

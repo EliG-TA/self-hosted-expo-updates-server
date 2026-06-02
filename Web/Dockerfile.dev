@@ -1,11 +1,11 @@
-FROM node:16-alpine
+FROM oven/bun:1-alpine
 
 # Add bash
 RUN apk add --no-cache bash
 
-# Yarn Cache
-ENV YARN_CACHE_FOLDER /yarn
-RUN mkdir -p $YARN_CACHE_FOLDER
+# Bun install cache
+ENV BUN_INSTALL_CACHE_DIR=/bun-cache
+RUN mkdir -p $BUN_INSTALL_CACHE_DIR
 
 # Docker Entry Point
 COPY ./deploy/startup-dev.sh /
