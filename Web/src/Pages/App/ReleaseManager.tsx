@@ -16,6 +16,8 @@ import {
   Spinner,
   StatusPill,
   Text,
+  UPLOAD_STATUS_COLORS,
+  UPLOAD_STATUS_LABELS,
 } from '../../Components'
 import { FC, invalidateQuery, useCQuery } from '../../Services'
 import type { AppRecord, IntegrityIssue, ListResult, ServiceOutcome, UnknownRecord, UploadRecord } from '../../types'
@@ -56,12 +58,13 @@ const fmtBytes = (n?: number) => {
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
 
-// Mirrors StatusPill: 'ready' is surfaced as "new" in the UI.
-const UPDATE_STATUS_OPTIONS = [
-  { label: 'released', value: 'released', color: '#7fdc96' },
-  { label: 'new', value: 'ready', color: '#7fb3ff' },
-  { label: 'obsolete', value: 'obsolete', color: 'rgba(255,255,255,0.6)' },
-]
+// Derived from shared UPLOAD_STATUS_COLORS / UPLOAD_STATUS_LABELS so the
+// filter chips colour-match StatusPill anywhere upload status is rendered.
+const UPDATE_STATUS_OPTIONS = ['released', 'ready', 'obsolete'].map((value) => ({
+  label: UPLOAD_STATUS_LABELS[value] || value,
+  value,
+  color: UPLOAD_STATUS_COLORS[value],
+}))
 
 const CATEGORY_LABELS = {
   zip: 'Zip',

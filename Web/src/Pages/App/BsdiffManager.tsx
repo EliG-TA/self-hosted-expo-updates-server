@@ -5,7 +5,7 @@ import { DataTable } from 'primereact/datatable'
 import { InputSwitch } from 'primereact/inputswitch'
 import { TabPanel, TabView } from 'primereact/tabview'
 
-import { Button, Card, Colors, ConfirmDialog, Flex, Spinner, Text } from '../../Components'
+import { Button, Card, Colors, ConfirmDialog, Flex, PATCH_STATUS_COLORS, Spinner, Text } from '../../Components'
 import { FC, invalidateQuery, useCQuery } from '../../Services'
 import type { AppRecord, BsdiffSettings, ListResult, PatchRecord, ServiceOutcome } from '../../types'
 import { listFromResult } from '../../types'
@@ -20,15 +20,6 @@ const fmtBytes = (n?: number) => {
 }
 
 const fmtDate = (d?: string | Date) => (d ? moment(d).format('YYYY-MM-DD HH:mm:ss') : '—')
-
-const PATCH_STATUS_COLORS: Record<string, string> = {
-  pending: '#9e9e9e',
-  generating: '#42a5f5',
-  validating: '#9775fa',
-  ready: '#4caf50',
-  failed: '#ef5350',
-  'not-beneficial': '#ffa94d',
-}
 
 // Stack long content vertically across 3 lines (value / → / value) instead
 // of one wide line. Full text shown — never clipped.

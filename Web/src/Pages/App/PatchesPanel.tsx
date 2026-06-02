@@ -13,6 +13,8 @@ import {
   DateRangeFilter,
   Flex,
   InlineMultiToggle,
+  PATCH_EVENT_COLORS,
+  PATCH_STATUS_COLORS,
   StatusPill,
   Text,
 } from '../../Components'
@@ -35,19 +37,6 @@ const fmtMs = (ms?: number) => {
 }
 const fmtDate = (d?: string | Date) => (d ? moment(d).format('YYYY-MM-DD HH:mm:ss') : '—')
 
-const PATCH_STATUS_COLORS: Record<string, string> = {
-  pending: '#9e9e9e',
-  generating: '#42a5f5',
-  validating: '#9775fa',
-  ready: '#4caf50',
-  failed: '#ef5350',
-  'not-beneficial': '#ffa94d',
-}
-const EVENT_COLORS: Record<string, string> = {
-  created: '#4dabf7',
-  'status-changed': '#9775fa',
-  removed: '#ff6b6b',
-}
 const EVENT_LABELS: Record<string, string> = {
   created: 'created',
   'status-changed': 'changed',
@@ -395,7 +384,7 @@ export const PatchPairDetail = ({ pair, onClose }: { pair: Record<string, unknow
           <Column
             header="Event"
             body={(r: PatchJobRecord) => (
-              <Pill value={EVENT_LABELS[r.event || ''] || r.event} color={EVENT_COLORS[r.event || '']} />
+              <Pill value={EVENT_LABELS[r.event || ''] || r.event} color={PATCH_EVENT_COLORS[r.event || '']} />
             )}
           />
           <Column

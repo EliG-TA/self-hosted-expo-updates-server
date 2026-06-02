@@ -6,7 +6,18 @@ import { DataTable } from 'primereact/datatable'
 import { InputText } from 'primereact/inputtext'
 import { TabPanel, TabView } from 'primereact/tabview'
 
-import { Button, Colors, DateRangeFilter, Flex, InlineMultiToggle, Input, Spinner, Text } from '../../Components'
+import {
+  Button,
+  Colors,
+  DateRangeFilter,
+  Flex,
+  InlineMultiToggle,
+  Input,
+  PATCH_STATUS_COLORS,
+  Spinner,
+  StatusPill,
+  Text,
+} from '../../Components'
 import { FC, invalidateQuery, useCQuery, useLazyTable } from '../../Services'
 import type { ListResult, PatchRecord, UnknownRecord, UploadRecord } from '../../types'
 import { listFromResult } from '../../types'
@@ -34,18 +45,6 @@ const getSize = (size?: number) => {
 }
 
 const formatDate = (date?: string | Date) => (date ? moment(date).format('YYYY-MM-DD HH:mm:ss') : '—')
-
-const STATUS_COLORS = {
-  released: '#4caf50',
-  obsolete: '#9e9e9e',
-  ready: '#42a5f5',
-  // patch lifecycle statuses (rendered in the Patches tab)
-  pending: '#ffb300',
-  generating: '#42a5f5',
-  validating: '#42a5f5',
-  failed: '#ef5350',
-  'not-beneficial': '#9e9e9e',
-}
 
 const styles: Record<string, CSSProperties> = {
   section: {
@@ -92,8 +91,6 @@ const styles: Record<string, CSSProperties> = {
     color: '#fff',
     fontSize: 11,
     fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   totalRow: {
     width: '100%',
@@ -105,10 +102,12 @@ const styles: Record<string, CSSProperties> = {
   },
 }
 
+// Patch-lifecycle badge: matches the Pill in PatchesPanel so the table
+// in Upload-details ↔ Patches tab → Status column looks identical to the
+// main Patches tab. Upload-status renderings elsewhere in this file use
+// StatusPill from Components/Common.
 const StatusBadge = ({ status }: { status?: string }) => (
-  <span style={{ ...styles.badge, backgroundColor: STATUS_COLORS[status as keyof typeof STATUS_COLORS] || '#666' }}>
-    {status}
-  </span>
+  <span style={{ ...styles.badge, backgroundColor: PATCH_STATUS_COLORS[status || ''] || '#666' }}>{status}</span>
 )
 
 const Row = ({
@@ -352,33 +351,6 @@ const DirectionalTable = ({
         )}
       />
       <Column
-        field="latestCreatedAt"
-        header="Updated"
-        sortable
-        filter
-        filterField="createdAt"
-        showFilterMatchModes={false}
-        filterElement={(o) => (
-          <DateRangeFilter
-            value={o.value}
-            onChange={(v) => o.filterCallback(v)}
-            minDate={createdMin}
-            maxDate={createdMax}
-          />
-        )}
-        body={(pair: Record<string, unknown>) => (
-          <PlatformCell
-            pair={pair}
-            render={(p) => (
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatDate(p?.completedAt || p?.createdAt)}</span>
-            )}
-            total={
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatDate(pair.latestCreatedAt as string)}</span>
-            }
-          />
-        )}
-      />
-      <Column
         field="totalSize"
         header="Size"
         sortable
@@ -408,6 +380,33 @@ const DirectionalTable = ({
         sortable
         body={(pair: Record<string, unknown>) => (
           <PlatformCell pair={pair} render={(p) => String(p?.servedCount || 0)} total={String(pair.totalServed || 0)} />
+        )}
+      />
+      <Column
+        field="latestCreatedAt"
+        header="Updated"
+        sortable
+        filter
+        filterField="createdAt"
+        showFilterMatchModes={false}
+        filterElement={(o) => (
+          <DateRangeFilter
+            value={o.value}
+            onChange={(v) => o.filterCallback(v)}
+            minDate={createdMin}
+            maxDate={createdMax}
+          />
+        )}
+        body={(pair: Record<string, unknown>) => (
+          <PlatformCell
+            pair={pair}
+            render={(p) => (
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatDate(p?.completedAt || p?.createdAt)}</span>
+            )}
+            total={
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatDate(pair.latestCreatedAt as string)}</span>
+            }
+          />
         )}
       />
     </DataTable>
@@ -528,7 +527,7 @@ const CreatePatchTable = ({ uploadId, project }: { uploadId: string; project?: s
           sortable
           filter
           filterPlaceholder="Status"
-          body={(r: PatchSource) => <StatusBadge status={r.status} />}
+          body={(r: PatchSource) => <StatusPill status={r.status} />}
         />
         <Column
           field="platformsLabel"
@@ -567,7 +566,7 @@ const CreatePatchTable = ({ uploadId, project }: { uploadId: string; project?: s
 const PATCH_STATUS_OPTIONS = ['pending', 'generating', 'validating', 'ready', 'failed', 'not-beneficial'].map((s) => ({
   label: s,
   value: s,
-  color: STATUS_COLORS[s as keyof typeof STATUS_COLORS],
+  color: PATCH_STATUS_COLORS[s],
 }))
 const PATCH_PLATFORM_OPTIONS = ['ios', 'android'].map((s) => ({ label: s, value: s }))
 
@@ -657,7 +656,7 @@ export const UpdateInfo = ({
           flexWrap: 'wrap',
         }}>
         <div style={{ display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <StatusBadge status={update.status} />
+          <StatusPill status={update.status} />
           {update.releasedAt && (
             <Text value={`released ${formatDate(update.releasedAt)}`} size={11} color="rgba(255,255,255,0.6)" />
           )}

@@ -352,11 +352,9 @@ class PatchesService extends MongoDBService {
         // audit row records WHY the status flipped (the patch document itself
         // keeps `error: null` since this isn't a failure).
         const reason = `benefit ratio lowered: previous ${((p.compressionRatio as number) * 100).toFixed(1)}% now under ${(newRatio * 100).toFixed(1)}% threshold`
-        await this.patch(
-          p._id,
-          { status: 'pending', nextAttemptAt: new Date(), error: null, completedAt: null },
-          { reason } as unknown as Record<string, unknown>,
-        )
+        await this.patch(p._id, { status: 'pending', nextAttemptAt: new Date(), error: null, completedAt: null }, {
+          reason,
+        } as unknown as Record<string, unknown>)
         requeued++
       } catch (e) {
         logger.warn('patches.reconcile: requeue failed', {
