@@ -6,6 +6,7 @@ on:
       - API/*
     branches:
       - master
+      - feat/rollback-on-bad-update-id
     tags:
       - v*
 
@@ -17,6 +18,14 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
 
+    # Use the built-in GITHUB_TOKEN to push to GHCR instead of a
+    # PAT_REPO_WRITE secret the fork owner would otherwise have to provision
+    # manually. `packages: write` lets the token push container images;
+    # `contents: read` is the standard checkout scope.
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - uses: actions/checkout@v2
 
@@ -24,7 +33,7 @@ jobs:
         run: docker build ./API --tag $IMAGE_NAME
 
       - name: Log into registry
-        run: echo "${{ secrets.PAT_REPO_WRITE }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Push image
         run: |
