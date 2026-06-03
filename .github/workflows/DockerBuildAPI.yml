@@ -3,12 +3,17 @@ name: DockerBuildAPI
 on:
   push:
     paths:
-      - API/*
+      # `API/*` only matches direct children of API/, so changes in
+      # API/src/... never triggered. `API/**` matches recursively.
+      - API/**
     branches:
       - master
       - feat/rollback-on-bad-update-id
     tags:
       - v*
+  # Lets you re-run the build from the Actions tab on demand without
+  # needing a fresh commit.
+  workflow_dispatch:
 
 env:
   IMAGE_NAME: self-hosted-expo-updates-server-api
