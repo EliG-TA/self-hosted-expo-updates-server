@@ -2,6 +2,7 @@ import s from '../hooks/security'
 import { logger } from '../modules'
 import { deletePatchFile } from '../modules/expo/patch'
 import type { HookContextLike, PatchRecord } from '../types'
+import { idMatch } from './lib/list-query'
 
 // When an upload is deleted, walk every patch that references it (as
 // either from or to) and remove the patch file + DB row. Otherwise stale
@@ -10,9 +11,10 @@ const cascadeRemovePatches = async (context: HookContextLike) => {
   if (!context.id) return context
   try {
     const patches = context.app.service('patches')
+    const id = idMatch(context.id)
     const related = await patches.find({
       query: {
-        $or: [{ fromUploadId: context.id }, { toUploadId: context.id }],
+        $or: [{ fromUploadId: id }, { toUploadId: id }],
         $limit: 1000,
       },
     })
