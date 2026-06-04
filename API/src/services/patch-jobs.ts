@@ -6,9 +6,9 @@ import error from '../hooks/error'
 import s from '../hooks/security'
 import { logger } from '../modules'
 import type { AppLike, HookContextLike, UnknownRecord } from '../types'
+import type { BsdiffSettings } from './bsdiff-settings'
+import { clampBsdiffSettings } from './bsdiff-settings'
 import { buildListQuery, idMatch } from './lib/list-query'
-
-const TTL_SECONDS = 30 * 24 * 60 * 60 // 30 days
 
 // Append-only event log of state changes on `patches`. One row per event:
 //   - 'created'         — a new patch row was enqueued
@@ -52,6 +52,32 @@ class PatchJobsService extends MongoDBService {
     return { data, total }
   }
 
+  // Apply the audit-log retention. `ttlDays === 0` means keep rows forever →
+  // drop the TTL index. Otherwise size the `ttl_at` index: createIndex can't
+  // change expireAfterSeconds on an existing index (it errors on option
+  // mismatch), so we collMod an existing index and only createIndex when it's
+  // missing. Called at boot (from the stored setting) and on every change.
+  async applyTtl(ttlDays: number) {
+    try {
+      const db = (await this.app.get('mongoClient')) as Db
+      const col = db.collection('patch-jobs')
+      if (!ttlDays || ttlDays <= 0) {
+        // No expiry: drop the TTL index if present (ignore "index not found").
+        await col.dropIndex('ttl_at').catch(() => undefined)
+        return
+      }
+      const expireAfterSeconds = Math.round(ttlDays * 24 * 60 * 60)
+      try {
+        await db.command({ collMod: 'patch-jobs', index: { name: 'ttl_at', expireAfterSeconds } })
+      } catch (e) {
+        // Index (or collection) not there yet → create it fresh.
+        await col.createIndex({ at: 1 }, { expireAfterSeconds, name: 'ttl_at' })
+      }
+    } catch (e) {
+      logger.warn('patch-jobs: failed to apply TTL', { error: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
   setup(app: AppLike, path: string) {
     this.app = app
     ;(app.get('mongoClient') as Promise<Db>).then(async (db) => {
@@ -59,11 +85,20 @@ class PatchJobsService extends MongoDBService {
       this.options.Model = collection
       this.Model = collection
       try {
-        await collection.createIndex({ at: 1 }, { expireAfterSeconds: TTL_SECONDS, name: 'ttl_at' })
         await collection.createIndex({ project: 1, at: -1 })
         await collection.createIndex({ patchId: 1, at: -1 })
       } catch (e) {
         logger.warn('patch-jobs: failed to create indexes', { error: e instanceof Error ? e.message : String(e) })
+      }
+      // Size the TTL index from the stored setting (default 30d). Read the doc
+      // straight from the DB — the bsdiff-settings service Model may not be
+      // ready yet during parallel setup.
+      try {
+        const settingsDoc = await db.collection('bsdiff-settings').findOne({ _id: 'global' as never })
+        const { patchJobsTtlDays } = clampBsdiffSettings((settingsDoc || {}) as unknown as Partial<BsdiffSettings>)
+        await this.applyTtl(patchJobsTtlDays)
+      } catch (e) {
+        logger.warn('patch-jobs: failed to init TTL', { error: e instanceof Error ? e.message : String(e) })
       }
     })
   }

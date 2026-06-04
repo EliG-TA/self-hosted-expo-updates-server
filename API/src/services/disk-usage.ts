@@ -5,8 +5,9 @@ import s from '../hooks/security'
 import { logger } from '../modules'
 import { PATCH_DIR_NAME } from '../modules/expo/patch'
 import type { AppLike, UnknownRecord } from '../types'
+import { getServerSettings } from './server-settings'
 
-const CACHE_TTL_MS = 10 * 1000
+const DEFAULT_CACHE_TTL_MS = 30 * 1000
 const UPDATES_ROOT = process.env.UPDATES_ROOT || '/updates'
 const DISK_STAT_PATH = process.env.DISK_STAT_PATH || UPDATES_ROOT
 let loggedStatOnce = false
@@ -121,7 +122,15 @@ class Service {
 
   async get() {
     const now = Date.now()
-    if (cache && now - cacheAt < CACHE_TTL_MS) return cache
+    // Cache window is live-configurable (server-settings.diskUsageCacheMs);
+    // getServerSettings never throws and falls back to defaults.
+    let ttlMs = DEFAULT_CACHE_TTL_MS
+    try {
+      ttlMs = (await getServerSettings(this.app)).diskUsageCacheMs
+    } catch (e) {
+      /* keep default */
+    }
+    if (cache && now - cacheAt < ttlMs) return cache
     cache = computeSizes()
     cacheAt = now
     return cache
