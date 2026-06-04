@@ -222,7 +222,8 @@ How it works:
 > ![Patches table](https://github.com/user-attachments/assets/5272e557-2882-4663-b84e-b3f6a52f99d7)
 
 > 📷 **Screenshot:** _Worker settings tab — live-configurable tick / cooldown / concurrency / benefit ratio_
-> ![Worker settings](https://github.com/user-attachments/assets/81f2cc74-0004-43be-8bb4-991afec09a36)
+> ![Worker settings](https://github.com/user-attachments/assets/bce7349e-2793-47b9-b67e-db97ff870ac6)
+
 
 ## Pre-release integrity checks
 
