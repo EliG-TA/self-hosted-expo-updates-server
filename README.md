@@ -172,7 +172,8 @@ Starting with Expo SDK 55 the native client can apply a **bsdiff binary patch** 
 > 📖 Full reference: [bsdiff Binary Patches](docs/bsdiff-binary-patches.md) · internals: [bsdiff Architecture](docs/bsdiff-architecture.md)
 
 > 📷 **Screenshot:** _Bsdiff manager — per-app toggle, total patches size and served count_
-<!-- ![Bsdiff manager](docs/images/bsdiff-manager.png) -->
+![Bsdiff manager](https://github.com/user-attachments/assets/4a387199-8634-4cf5-970a-a0e159fe933b)
+
 
 How it works:
 
@@ -219,10 +220,12 @@ How it works:
 - **Cleanup** — remove patches whose target update is now obsolete, or purge all patches for an app, with a confirm dialog showing how much disk space will be freed.
 
 > 📷 **Screenshot:** _Patches table grouped by source → target with per-platform status, size, ratio and served count_
-<!-- ![Patches table](docs/images/patches-table.png) -->
+![Patches table](https://github.com/user-attachments/assets/5272e557-2882-4663-b84e-b3f6a52f99d7)
+
 
 > 📷 **Screenshot:** _Worker settings tab — live-configurable tick / cooldown / concurrency / benefit ratio_
-<!-- ![Worker settings](docs/images/worker-settings.png) -->
+![Worker settings](https://github.com/user-attachments/assets/81f2cc74-0004-43be-8bb4-991afec09a36)
+
 
 ## Pre-release integrity checks
 
@@ -239,7 +242,8 @@ The dashboard header shows a live storage breakdown: bytes used by updates, by p
 - `DISK_STAT_PATH` — path used for the free/total figures (default = `UPDATES_ROOT`). On macOS Docker Desktop dev, bind mounts report nonsense through virtio-fs, so the dev compose sets `DISK_STAT_PATH=/` to read the VM overlay root instead.
 
 > 📷 **Screenshot:** _Dashboard header chip — Updates / Patches / Used / Free_
-<!-- ![Disk usage chip](docs/images/disk-usage-chip.png) -->
+![Disk usage chip](https://github.com/user-attachments/assets/467fa60c-9af1-4327-a6f8-4e8bc9161a7a)
+
 
 ## Maintenance & cleanup
 
@@ -252,7 +256,8 @@ Storage and database hygiene tools, all driven from the Web UI:
 - **Date-range filtering** — the update and patch tables support filtering by date range to make all of the above easier to target.
 
 > 📷 **Screenshot:** _"Clean up old updates" preview dialog showing candidates and reclaimable space_
-<!-- ![Cleanup old updates](docs/images/cleanup-old-updates.png) -->
+![Cleanup old updates](https://github.com/user-attachments/assets/ff77ecaf-2d09-4375-9fde-2ce99305ce37)
+
 
 > 📷 **Screenshot:** _Orphan scan results — on-disk files with no DB record_
 <!-- ![Orphan scan](docs/images/orphan-scan.png) -->
