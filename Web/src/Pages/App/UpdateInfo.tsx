@@ -617,6 +617,7 @@ const OverviewTab = ({ update }: { update: UploadRecord }) => (
       <Row label="Release Channel" value={update.releaseChannel} />
       <Row label="Created" value={formatDate(update.createdAt)} />
       <Row label="Released On" value={update.releasedAt ? formatDate(update.releasedAt) : 'Not Released'} />
+      {update.deletedAt && <Row label="Deleted On" value={formatDate(update.deletedAt)} />}
     </Section>
 
     <Section title="Source">

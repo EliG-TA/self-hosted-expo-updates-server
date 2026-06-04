@@ -964,6 +964,19 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
     [uploads, showDeleted],
   )
   const deletedCount = useMemo(() => uploads.filter((u) => u.status === 'deleted').length, [uploads])
+  // The Status filter palette is live-states-only by default; once "Show
+  // deleted" is on, surface 'deleted' as a filterable option too so the user
+  // can narrow the now-visible tombstones.
+  const statusFilterOptions = useMemo(
+    () =>
+      showDeleted
+        ? [
+            ...UPDATE_STATUS_OPTIONS,
+            { label: UPLOAD_STATUS_LABELS['deleted'] || 'deleted', value: 'deleted', color: UPLOAD_STATUS_COLORS['deleted'] },
+          ]
+        : UPDATE_STATUS_OPTIONS,
+    [showDeleted],
+  )
 
   // Channel/version values are project-scoped and unknown until we see the
   // uploads list, so derive options from the actual rows. Status uses a
@@ -1116,7 +1129,7 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
               filterElement={(o) => (
                 <InlineMultiToggle
                   value={o.value as string[] | undefined}
-                  options={UPDATE_STATUS_OPTIONS}
+                  options={statusFilterOptions}
                   onChange={(v) => o.filterApplyCallback(v)}
                 />
               )}
@@ -1128,7 +1141,22 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
               <label
                 onClick={(e) => {
                   e.preventDefault()
-                  setShowDeleted((v) => !v)
+                  const next = !showDeleted
+                  setShowDeleted(next)
+                  // Turning off: drop a lingering 'deleted' selection so the
+                  // Status funnel doesn't stay active on an option we no longer offer.
+                  if (!next) {
+                    setUploadFilters((prev) => {
+                      const cur = prev.status as { value?: unknown; matchMode?: FilterMatchMode } | undefined
+                      const val = cur?.value
+                      if (!Array.isArray(val) || !val.includes('deleted')) return prev
+                      const cleaned = (val as string[]).filter((x) => x !== 'deleted')
+                      return {
+                        ...prev,
+                        status: { value: cleaned.length ? cleaned : null, matchMode: cur?.matchMode ?? FilterMatchMode.IN },
+                      }
+                    })
+                  }
                 }}
                 style={{
                   display: 'flex',
