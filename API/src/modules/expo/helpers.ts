@@ -67,6 +67,19 @@ export const getAssetMetadataSync = ({ update, filePath, ext, isLaunchAsset, pla
   }
 }
 
+// Manifest timestamp prefers releasedAt, but unreleased uploads (and the
+// pre-flight integrity guard that runs *before* release) have none — fall back
+// to createdAt, then to now, so `new Date(...).toISOString()` never throws
+// `RangeError: Invalid Date` and blocks the release. See issue #48.
+const resolveManifestTimestamp = (update: UploadRecord): string => {
+  for (const candidate of [update.releasedAt, update.createdAt]) {
+    if (!candidate) continue
+    const d = new Date(candidate)
+    if (!Number.isNaN(d.getTime())) return d.toISOString()
+  }
+  return new Date().toISOString()
+}
+
 export const getMetadataSync = (update: UploadRecord): MetadataResult => {
   try {
     const metadataPath = `${update.path}/metadata.json`
@@ -75,7 +88,7 @@ export const getMetadataSync = (update: UploadRecord): MetadataResult => {
 
     return {
       metadataJson,
-      createdAt: new Date(update.releasedAt).toISOString(),
+      createdAt: resolveManifestTimestamp(update),
     }
   } catch (error) {
     throw new Error(`No update found with runtime version: ${update.version}. Error: ${error}`)
