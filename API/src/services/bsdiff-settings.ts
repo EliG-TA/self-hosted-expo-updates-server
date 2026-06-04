@@ -19,6 +19,7 @@ export interface BsdiffSettings {
   staleInProgressMs: number // reclaim a generating/validating patch stuck this long
   concurrency: number // max patches generated in parallel
   patchBenefitRatio: number // patch must be < ratio×target, else 'not-beneficial'
+  patchJobsTtlDays: number // how long patch-jobs audit rows live (Mongo TTL index); 0 = keep forever
 }
 
 export const BSDIFF_SETTINGS_DEFAULTS: BsdiffSettings = {
@@ -27,6 +28,7 @@ export const BSDIFF_SETTINGS_DEFAULTS: BsdiffSettings = {
   staleInProgressMs: 5 * 60 * 1000, // 5min
   concurrency: 1,
   patchBenefitRatio: 0.75,
+  patchJobsTtlDays: 90,
 }
 
 const DOC_ID = 'global'
@@ -54,6 +56,8 @@ export const clampBsdiffSettings = (input: Partial<BsdiffSettings>): BsdiffSetti
     staleInProgressMs: clampInt(input.staleInProgressMs, 30_000, 24 * 60 * 60 * 1000, d.staleInProgressMs),
     concurrency: clampInt(input.concurrency, 1, 8, d.concurrency),
     patchBenefitRatio: clampFloat(input.patchBenefitRatio, 0.05, 1, d.patchBenefitRatio),
+    // 0 is allowed and means "no TTL — keep audit rows forever".
+    patchJobsTtlDays: clampInt(input.patchJobsTtlDays, 0, 365, d.patchJobsTtlDays),
   }
 }
 
@@ -119,6 +123,7 @@ const sanitizeOnPatch = async (context: HookContextLike) => {
   // reconcile existing patches (see reconcileIfRatioChanged).
   const params = (context.params || (context.params = {})) as UnknownRecord
   params._prevBenefitRatio = current.patchBenefitRatio
+  params._prevTtlDays = current.patchJobsTtlDays
   const incoming = (context.data as Partial<BsdiffSettings>) || {}
   context.data = { ...clampBsdiffSettings({ ...current, ...incoming }), updatedAt: new Date() } as UnknownRecord
   return context
@@ -145,6 +150,22 @@ const reconcileIfRatioChanged = (context: HookContextLike) => {
   return context
 }
 
+// A patchJobsTtlDays change must resize the Mongo TTL index on `patch-jobs`
+// (createIndex can't alter expireAfterSeconds in place — that's a collMod).
+// Delegated to the patch-jobs service via app.service to avoid an import cycle.
+const reconcileTtlIfChanged = (context: HookContextLike) => {
+  const prev = (context.params as UnknownRecord | undefined)?._prevTtlDays as number | undefined
+  const next = (context.result as Partial<BsdiffSettings> | undefined)?.patchJobsTtlDays
+  if (typeof next === 'number' && prev !== next) {
+    void Promise.resolve(context.app.service('patch-jobs').applyTtl?.(next)).catch((e) =>
+      logger.warn('bsdiff-settings: patch-jobs TTL reconcile failed', {
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    )
+  }
+  return context
+}
+
 export default {
   name: 'bsdiff-settings',
   createService,
@@ -157,7 +178,7 @@ export default {
       remove: [s.externalMethodNotAllowed],
     },
     after: {
-      patch: [broadcastChange, reconcileIfRatioChanged],
+      patch: [broadcastChange, reconcileIfRatioChanged, reconcileTtlIfChanged],
     },
   },
 }

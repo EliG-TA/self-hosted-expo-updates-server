@@ -172,8 +172,7 @@ Starting with Expo SDK 55 the native client can apply a **bsdiff binary patch** 
 > 📖 Full reference: [bsdiff Binary Patches](docs/bsdiff-binary-patches.md) · internals: [bsdiff Architecture](docs/bsdiff-architecture.md)
 
 > 📷 **Screenshot:** _Bsdiff manager — per-app toggle, total patches size and served count_
-![Bsdiff manager](https://github.com/user-attachments/assets/4a387199-8634-4cf5-970a-a0e159fe933b)
-
+> ![Bsdiff manager](https://github.com/user-attachments/assets/4a387199-8634-4cf5-970a-a0e159fe933b)
 
 How it works:
 
@@ -220,30 +219,28 @@ How it works:
 - **Cleanup** — remove patches whose target update is now obsolete, or purge all patches for an app, with a confirm dialog showing how much disk space will be freed.
 
 > 📷 **Screenshot:** _Patches table grouped by source → target with per-platform status, size, ratio and served count_
-![Patches table](https://github.com/user-attachments/assets/5272e557-2882-4663-b84e-b3f6a52f99d7)
-
+> ![Patches table](https://github.com/user-attachments/assets/5272e557-2882-4663-b84e-b3f6a52f99d7)
 
 > 📷 **Screenshot:** _Worker settings tab — live-configurable tick / cooldown / concurrency / benefit ratio_
-![Worker settings](https://github.com/user-attachments/assets/81f2cc74-0004-43be-8bb4-991afec09a36)
-
+> ![Worker settings](https://github.com/user-attachments/assets/81f2cc74-0004-43be-8bb4-991afec09a36)
 
 ## Pre-release integrity checks
 
 Before an update is released (or rolled back) the server verifies that the database record and the actual files on disk agree: the zip and extracted directory exist and are readable, `metadata.json` / `app.json` / `package.json` parse, the stored hash still matches the files, and the launch bundle and referenced assets are present (per platform). If anything that would break clients is wrong, the release is **refused** with a clear list of problems — so you can't accidentally ship a corrupt update. A project-wide integrity report is also available to spot drift between the DB and disk.
 
 > 📷 **Screenshot:** _Project integrity report listing uploads with their issues (errors / warnings)_
+
 <!-- ![Integrity report](docs/images/integrity-report.png) -->
 
 ## Disk usage monitoring
 
-The dashboard header shows a live storage breakdown: bytes used by updates, by patches, and total / free space on the updates volume (read via `fs.statfs`, cached for 10s). On Linux production the defaults work out of the box. Two optional env vars tune it:
+The dashboard header shows a live storage breakdown: bytes used by updates, by patches, and total / free space on the updates volume (read via `fs.statfs`). The full FS walk is cached in-process; **click the chip** to set the cache window (default 30s). On Linux production the defaults work out of the box. Two optional env vars tune the paths:
 
 - `UPDATES_ROOT` — directory walked for the updates/patches totals (default `/updates`).
 - `DISK_STAT_PATH` — path used for the free/total figures (default = `UPDATES_ROOT`). On macOS Docker Desktop dev, bind mounts report nonsense through virtio-fs, so the dev compose sets `DISK_STAT_PATH=/` to read the VM overlay root instead.
 
 > 📷 **Screenshot:** _Dashboard header chip — Updates / Patches / Used / Free_
-![Disk usage chip](https://github.com/user-attachments/assets/467fa60c-9af1-4327-a6f8-4e8bc9161a7a)
-
+> ![Disk usage chip](https://github.com/user-attachments/assets/467fa60c-9af1-4327-a6f8-4e8bc9161a7a)
 
 ## Maintenance & cleanup
 
@@ -256,10 +253,10 @@ Storage and database hygiene tools, all driven from the Web UI:
 - **Date-range filtering** — the update and patch tables support filtering by date range to make all of the above easier to target.
 
 > 📷 **Screenshot:** _"Clean up old updates" preview dialog showing candidates and reclaimable space_
-![Cleanup old updates](https://github.com/user-attachments/assets/ff77ecaf-2d09-4375-9fde-2ce99305ce37)
-
+> ![Cleanup old updates](https://github.com/user-attachments/assets/ff77ecaf-2d09-4375-9fde-2ce99305ce37)
 
 > 📷 **Screenshot:** _Orphan scan results — on-disk files with no DB record_
+
 <!-- ![Orphan scan](docs/images/orphan-scan.png) -->
 
 # Example Apps

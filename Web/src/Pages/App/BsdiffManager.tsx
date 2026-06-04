@@ -109,6 +109,7 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
     staleMin: number
     concurrency: number
     benefitPct: number
+    logRetentionDays: number
   } | null>(null)
 
   useEffect(() => {
@@ -119,6 +120,7 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
       staleMin: (settings.staleInProgressMs ?? 5 * 60 * 1000) / 60000,
       concurrency: settings.concurrency ?? 1,
       benefitPct: Math.round((settings.patchBenefitRatio ?? 0.75) * 100),
+      logRetentionDays: settings.patchJobsTtlDays ?? 90,
     })
   }, [settings])
 
@@ -132,6 +134,7 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
         staleInProgressMs: Math.round(form.staleMin * 60000),
         concurrency: Math.round(form.concurrency),
         patchBenefitRatio: form.benefitPct / 100,
+        patchJobsTtlDays: Math.round(form.logRetentionDays),
       })
       invalidateQuery('bsdiffSettings')
       window.toast?.show({ severity: 'info', summary: 'Worker settings saved' })
@@ -445,7 +448,7 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
           <Flex fw as style={{ padding: 10, gap: 16 }}>
             <Text value="Global bsdiff worker settings" bold size={14} />
             <Text
-              value="These apply to the whole server (one background worker), not just this app. Changes take effect on the next worker tick — no restart needed."
+              value="These apply to the whole server (one background worker + shared patch-log retention), not just this app. Changes take effect live — no restart needed."
               size={12}
               color="rgba(255,255,255,0.6)"
             />
@@ -488,6 +491,13 @@ export const BsdiffManager = ({ app }: { app: AppRecord }) => {
                     (v) => setForm({ ...form, benefitPct: v }),
                     { min: 5, max: 100, step: 1 },
                     'Above this the patch is not-beneficial. Saving re-judges existing patches (ready ↔ not-beneficial).',
+                  )}
+                  {settingField(
+                    'Patch-log retention (days)',
+                    form.logRetentionDays,
+                    (v) => setForm({ ...form, logRetentionDays: v }),
+                    { min: 0, max: 365, step: 1 },
+                    'How long patch audit history (patch-jobs) is kept before Mongo expires it. 0 = keep forever.',
                   )}
                 </Flex>
                 <Flex row style={{ gap: 10 }}>

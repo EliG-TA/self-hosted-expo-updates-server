@@ -64,6 +64,11 @@ export interface BsdiffSettings extends UnknownRecord {
   staleInProgressMs?: number
   concurrency?: number
   patchBenefitRatio?: number
+  patchJobsTtlDays?: number
+}
+
+export interface ServerSettings extends UnknownRecord {
+  diskUsageCacheMs?: number
 }
 
 export interface DiskUsageRecord extends UnknownRecord {

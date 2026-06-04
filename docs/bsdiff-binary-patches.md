@@ -59,7 +59,7 @@ Manual enqueue is **not** gated on `bsdiffEnabled`, so you can pre-warm patches 
 
 ## Metrics & dashboard
 
-- **Disk usage chip** (header) — bytes used by updates, by patches, and total/free on the updates volume, e.g. `Updates: 12.3 GB · Patches: 240 MB · Used: 18.4 / 200 GB · Free: 181.6 GB`. Tunable via the `UPDATES_ROOT` and `DISK_STAT_PATH` env vars (see [Architecture → Metrics & disk usage](./bsdiff-architecture.md#metrics--disk-usage)).
+- **Disk usage chip** (header) — shows a `Patches` total alongside updates/used/free. The chip is part of the general disk-usage feature (documented in the README), not bsdiff itself; it just happens to surface patch bytes too.
 - **Patches table** — patches grouped by from→to pair, with per-platform status, size, compression ratio and served count; a detail dialog shows both platforms and the cross-platform job history. Server-side paginated/sorted/filtered with realtime refresh.
 - **Bsdiff manager** (app screen) — the `bsdiffEnabled` toggle, total patches size and served count, the live worker-settings tab, and the cleanup actions above.
 

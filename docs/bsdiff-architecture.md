@@ -71,7 +71,7 @@ Append-only event log of `patches` state changes, populated by Feathers hooks on
 }
 ```
 
-TTL index on `at` (30d). External clients may only `find`/`get`/`remove`; `create`/`patch`/`update` are internal-only.
+Retention is a Mongo TTL index on `at`, sized from `bsdiff-settings.patchJobsTtlDays` (default 90 days; `0` = keep forever, which drops the TTL index). External clients may only `find`/`get`/`remove`; `create`/`patch`/`update` are internal-only.
 
 ### `apps` / `bsdiff-settings`
 
@@ -121,8 +121,11 @@ One global document, editable live from the UI; reads are clamped server-side an
 | `staleInProgressMs` | `5min` | `[30s, 24h]` | Reclaim a job stuck in `generating` this long |
 | `concurrency` | `1` | `[1, 8]` | Patches generated in parallel |
 | `patchBenefitRatio` | `0.75` | `[0.05, 1]` | A patch is kept only if `size < ratio × target` |
+| `patchJobsTtlDays` | `90` | `[0, 365]` | Retain `patch-jobs` audit rows this long (`0` = keep forever) |
 
-The first four apply on the next cycle. Changing `patchBenefitRatio` re-judges existing patches (`reconcileBenefitRatio`): a `ready` patch whose ratio is now too high becomes `not-beneficial` (file deleted); a `not-beneficial` patch that now qualifies returns to `pending`.
+The worker-loop fields (tick / cooldown / stale / concurrency) apply on the next cycle. Changing `patchBenefitRatio` re-judges existing patches (`reconcileBenefitRatio`): a `ready` patch whose ratio is now too high becomes `not-beneficial` (file deleted); a `not-beneficial` patch that now qualifies returns to `pending`. Changing `patchJobsTtlDays` resizes the Mongo TTL index on `patch-jobs` via `collMod` (`reconcileTtlIfChanged`), or drops it when set to `0`.
+
+> The disk-usage cache window is **not** here — it is a general web-app setting (`server-settings.diskUsageCacheMs`), not bsdiff-specific. See [Metrics](#metrics).
 
 ## Validation
 
@@ -134,17 +137,11 @@ The fork only *generates* patches; it does not apply them server-side, and that'
 
 The worker also refuses to build a patch when either bundle fails an **integrity check** (missing/unreadable files, unparseable metadata, missing launch bundle) — the same check the release guard and asset endpoint use, scoped per platform so an iOS problem never blocks Android.
 
-## Metrics & disk usage
-
-`/disk-usage` returns:
-- `updatesBytes` — sum of all `update.path` directories
-- `patchesBytes` — sum of all `<update.path>/_patches/` directories
-- `totalBytes` / `freeBytes` / `usedBytes` — from `fs.statfs`
-- 10-second in-memory cache (a full FS walk is expensive)
-
-Env: `UPDATES_ROOT` (directory walked for the totals, default `/updates`) and `DISK_STAT_PATH` (path passed to `statfs`, default = `UPDATES_ROOT`). On macOS Docker Desktop dev, bind mounts report nonsense through virtio-fs, so the dev compose sets `DISK_STAT_PATH=/`; on Linux production this is unnecessary.
+## Metrics
 
 `/utils/getUpdateSizes?uploadId=<id>` returns per-platform JS bundle bytes, total unique asset bytes (each shared file counted once, with shared/per-platform counts), related patch bytes, on-disk zip size, and a grand total. A single `assetsBytes` (rather than a per-platform split) is reported because Expo shares assets across platforms — splitting bytes would double-count or require an arbitrary allocation; the breakdown lives in the *count* fields.
+
+The patch bytes shown here (and the `patchesBytes` field of the `/disk-usage` endpoint) are bsdiff's only touchpoints in the storage metrics. **Disk-usage monitoring itself is a general web-app feature**, not part of bsdiff — see the README's *Disk usage monitoring* section. Its cache window is a global setting (`server-settings.diskUsageCacheMs`, default 30s), read live by the `/disk-usage` service; it has nothing to do with the bsdiff worker.
 
 ## Code map
 
@@ -161,7 +158,7 @@ Env: `UPDATES_ROOT` (directory walked for the totals, default `/updates`) and `D
 | `src/services/patch-pairs.ts` | from→to identity + `page` rollup aggregation |
 | `src/services/patch-jobs.ts` | Append-only audit log (TTL 30d) |
 | `src/services/bsdiff-settings.ts` | Live worker settings singleton (read/clamp/seed) |
-| `src/services/disk-usage.ts` | `fs.statfs` + recursive dir sizes (10s cache) |
+| `src/services/disk-usage.ts` | `fs.statfs` + recursive dir sizes; reports a `patchesBytes` breakdown (cache window from `server-settings`) |
 | `src/services/apps.ts` | `bsdiffEnabled` field |
 | `src/services/uploads.ts` | `before.remove` cascade |
 | `src/services/utils.ts` | `getUpdateSizes` endpoint |

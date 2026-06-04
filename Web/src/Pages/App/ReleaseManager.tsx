@@ -972,7 +972,11 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
       showDeleted
         ? [
             ...UPDATE_STATUS_OPTIONS,
-            { label: UPLOAD_STATUS_LABELS['deleted'] || 'deleted', value: 'deleted', color: UPLOAD_STATUS_COLORS['deleted'] },
+            {
+              label: UPLOAD_STATUS_LABELS['deleted'] || 'deleted',
+              value: 'deleted',
+              color: UPLOAD_STATUS_COLORS['deleted'],
+            },
           ]
         : UPDATE_STATUS_OPTIONS,
     [showDeleted],
@@ -1153,7 +1157,10 @@ export const ReleaseManager = ({ app }: { app: AppRecord }) => {
                       const cleaned = (val as string[]).filter((x) => x !== 'deleted')
                       return {
                         ...prev,
-                        status: { value: cleaned.length ? cleaned : null, matchMode: cur?.matchMode ?? FilterMatchMode.IN },
+                        status: {
+                          value: cleaned.length ? cleaned : null,
+                          matchMode: cur?.matchMode ?? FilterMatchMode.IN,
+                        },
                       }
                     })
                   }
