@@ -371,8 +371,9 @@ class Service {
 
   /**
    * Find uploads safe to delete:
-   *   1. status is anything except 'released' (released = currently live for
-   *      some channel+version — never touch)
+   *   1. status is anything except 'released' (currently live — never touch)
+   *      or 'deleted' (already a tombstone with its files gone — re-deleting
+   *      is a no-op that would only noise the report with missing-file errors)
    *   2. createdAt is older than `olderThanDays`
    *   3. No client currently reports the upload's updateId as `currentUpdate`
    *      (nobody is pinned to this bundle right now)
@@ -387,7 +388,7 @@ class Service {
 
     const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000)
     const cleanable = (await this.app.service('uploads').find({
-      query: { project, status: { $ne: 'released' } },
+      query: { project, status: { $nin: ['released', 'deleted'] } },
     })) as UploadRecord[]
 
     const candidates = []

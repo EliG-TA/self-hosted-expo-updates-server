@@ -104,7 +104,7 @@ export const generatePatch = async (fromUpload, toUpload, platform) => {
 /**
  * Server-side validation of a freshly generated patch.
  *
- * Strategy (no server-side apply — see docs/bsdiff-implementation-plan.md):
+ * Strategy (no server-side apply — see docs/bsdiff-architecture.md):
  * 1. Magic header check — patch must start with BSDIFF40 (the format both
  *    iOS bspatch.c and Android BSPatch.cpp expect).
  * 2. Non-empty body.

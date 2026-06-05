@@ -117,6 +117,11 @@ const queries: Record<string, AppQuery> = {
     queryFn: () => FC.service('bsdiff-settings').get('global'),
     noInitalPrefetch: true,
   },
+  serverSettings: {
+    config: queryConfig.rare,
+    queryFn: () => FC.service('server-settings').get('global'),
+    noInitalPrefetch: true,
+  },
   // Server-side paginated/sorted/filtered lists. `params` (the 2nd key element)
   // is an object {project, skip, limit, sortField, sortOrder, filters, search};
   // react-query keys on it so changing page/sort/filter refetches.

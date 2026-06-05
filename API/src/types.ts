@@ -24,6 +24,7 @@ export interface AppService {
   getPatchSources?(data?: unknown): Promise<unknown>
   enqueuePatch?(data?: unknown): Promise<unknown>
   reconcileBenefitRatio?(newRatio: number): Promise<unknown>
+  applyTtl?(ttlDays: number): Promise<unknown>
   page?(query?: UnknownRecord): Promise<{ data: unknown[]; total: number }>
   ensure?(data: UnknownRecord): Promise<unknown>
   pruneEmpty?(): Promise<unknown>

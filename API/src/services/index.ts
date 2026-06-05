@@ -13,6 +13,7 @@ import messages from './messages'
 import patchJobs from './patch-jobs'
 import patchPairs from './patch-pairs'
 import patches from './patches'
+import serverSettings from './server-settings'
 import stats from './stats'
 import status from './status'
 import upload from './upload'
@@ -49,6 +50,7 @@ const services: ServiceModule[] = [
   patchJobs,
   patchPairs,
   patches,
+  serverSettings,
   stats,
   status,
   upload,
