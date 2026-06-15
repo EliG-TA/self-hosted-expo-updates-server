@@ -69,8 +69,13 @@ class PatchJobsService extends MongoDBService {
       const expireAfterSeconds = Math.round(ttlDays * 24 * 60 * 60)
       try {
         await db.command({ collMod: 'patch-jobs', index: { name: 'ttl_at', expireAfterSeconds } })
-      } catch (e) {
-        // Index (or collection) not there yet → create it fresh.
+      } catch {
+        // collMod fails when the index is missing OR already exists with a
+        // different key/options (an older build created `ttl_at` differently).
+        // createIndex alone would then throw "Index with name: ttl_at already
+        // exists with different options", so drop any stale `ttl_at` first —
+        // a no-op when it's simply absent — then recreate it fresh.
+        await col.dropIndex('ttl_at').catch(() => undefined)
         await col.createIndex({ at: 1 }, { expireAfterSeconds, name: 'ttl_at' })
       }
     } catch (e) {

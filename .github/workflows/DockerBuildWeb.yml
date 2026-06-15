@@ -3,11 +3,16 @@ name: DockerBuildWeb
 on:
   push:
     paths:
-      - Web/*
+      # `Web/*` only matches direct children of Web/, so changes in
+      # Web/src/... never triggered. `Web/**` matches recursively.
+      - Web/**
     branches:
       - master
     tags:
       - v*
+  # Lets you re-run the build from the Actions tab on demand without
+  # needing a fresh commit.
+  workflow_dispatch:
 
 env:
   IMAGE_NAME: self-hosted-expo-updates-server-web
@@ -15,7 +20,15 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    # Allow workflow_dispatch alongside push so the Actions tab "Run workflow"
+    # button actually runs the build instead of skipping it.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    # Use the built-in GITHUB_TOKEN to push to GHCR instead of a
+    # PAT_REPO_WRITE secret the fork owner would otherwise have to provision.
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - uses: actions/checkout@v2
@@ -24,7 +37,7 @@ jobs:
         run: docker build ./Web --tag $IMAGE_NAME
 
       - name: Log into registry
-        run: echo "${{ secrets.PAT_REPO_WRITE }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Push image
         run: |
