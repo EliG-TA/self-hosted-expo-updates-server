@@ -7,6 +7,7 @@ import type { AppLike, LoggerLike, UnknownRecord } from '../types'
 import channels from './channels'
 import type { ExpressLike } from './express.config'
 import expressconfig from './express.config'
+import health from './health'
 import loggerDefault from './logger'
 import mongodb from './mongodb'
 import * as patchesWorker from './patches/worker'
@@ -41,6 +42,10 @@ export default (express: FeathersExpressLike) =>
 
     // Database Adapter
     app.configure(mongodb)
+
+    // Liveness/readiness probes. Registered before the services so they stay
+    // unauthenticated, and before notFound() so they actually resolve.
+    app.configure(health)
 
     // SConfiguring Services
     app.configure(services)

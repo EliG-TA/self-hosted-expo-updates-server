@@ -30,12 +30,19 @@ interface AuthResult {
   accessToken?: string
 }
 
+interface FeathersError {
+  name?: string
+  code?: number
+  message?: string
+}
+
 interface FeathersClientState {
   isDev: boolean
   socket: Socket
   client: FeathersApplication
   online: boolean
   authenticated: boolean
+  loginError: string | null
   connectionHandler: (event: string) => () => void
   server: string
   login: (credentials: UnknownRecord) => Promise<unknown>
@@ -52,6 +59,7 @@ const FC = {
   client: feathers() as unknown as FeathersApplication,
   online: false,
   authenticated: false,
+  loginError: null,
   connectionHandler: (event) => () => {
     FC.isDev && console.log(`Socket ${event} to ${serverUrl}`)
     FC.online = event === 'connect'
@@ -67,13 +75,25 @@ FC.socket.on('disconnect', FC.connectionHandler('disconnect'))
 
 /* ============================== Socket Methods ================================================== */
 
+// Feathers reports bad credentials as a 401 NotAuthenticated. Anything else means the
+// login never got judged at all — the socket is down, or the API is up but its own
+// dependencies (mongod) are not — and saying so is the difference between a user
+// retyping their password and an operator looking at the server.
+const loginErrorMessage = (details: FeathersError) => {
+  if (!FC.online) return 'Cannot reach the server. Check your connection and try again.'
+  if (details?.name === 'NotAuthenticated' || details?.code === 401) return 'Wrong username or password.'
+  return `The server could not process the login: ${details?.message || 'unknown error'}`
+}
+
 FC.login = async (credentials) => {
   try {
     const user = (await FC.client.authenticate(credentials)) as AuthResult
     FC.authenticated = !!user.accessToken
+    FC.loginError = null
     return user
   } catch (details) {
     FC.authenticated = false
+    FC.loginError = loginErrorMessage(details as FeathersError)
     FC.isDev && console.log(details)
     return { user: { username: 'NotAuthenticated' } }
   }
