@@ -1,11 +1,14 @@
 import * as http from 'http'
 
+// /readyz is the readiness contract from modules/health.ts: a real mongod ping,
+// 503 when it cannot be reached. Cheaper than /status, which answers by querying
+// the users collection.
 const options = {
   host: 'localhost',
   port: 3000,
   timeout: 2000,
   method: 'GET',
-  path: '/status/',
+  path: '/readyz',
 }
 
 let data = ''
